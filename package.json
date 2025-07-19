@@ -1,0 +1,21 @@
+{
+  "name": "@token-ring/telegram",
+  "description": "TokenRing Coder Application",
+  "version": "0.1.0",
+  "dependencies": {
+    "@token-ring/ai-client": "0.1.0",
+    "@token-ring/chat": "0.1.0",
+    "@token-ring/eslint-config": "0.0.0",
+    "@token-ring/registry": "0.1.0",
+    "tgfancy": "^0.13.0"
+  },
+  "exports": {
+    "./*": "./*.js"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eslint": "eslint --fix ./"
+  }
+}
