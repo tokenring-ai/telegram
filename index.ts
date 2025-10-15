@@ -7,7 +7,7 @@ export const packageInfo: TokenRingPackage = {
   version: packageJSON.version,
   description: packageJSON.description,
   install(agentTeam: AgentTeam) {
-    const telegramConfig = agentTeam.getConfigSlice("telegram", TelegramServiceConfigSchema);
+    const telegramConfig = agentTeam.getConfigSlice("telegram", TelegramServiceConfigSchema.optional());
 
     if (telegramConfig) {
       agentTeam.services.register(new TelegramService(telegramConfig));
