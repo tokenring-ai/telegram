@@ -1,21 +1,20 @@
 {
-  "name": "@token-ring/telegram",
-  "description": "TokenRing Coder Application",
-  "version": "0.1.0",
+  "name": "@tokenring-ai/telegram",
+  "description": "A Token Ring plugin providing Telegram integration.",
+  "version": "1.0.0",
   "dependencies": {
-    "@token-ring/ai-client": "0.1.0",
-    "@token-ring/chat": "0.1.0",
-    "@token-ring/eslint-config": "0.0.0",
-    "@token-ring/registry": "0.1.0",
-    "tgfancy": "^0.13.0"
+    "@tokenring-ai/ai-client": "0.1.0",
+    "@tokenring-ai/agent": "0.1.0",
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "devDependencies": {
+   "@types/node-telegram-bot-api": "^0.64.11"
   },
   "exports": {
-    "./*": "./*.js"
+   ".": "./index.ts",
+   "./*": "./*.ts"
   },
-  "license": "UNLICENSED",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "eslint": "eslint --fix ./"
-  }
+  "types": "./index.ts",
+  "license": "MIT",
+  "type": "module"
 }
