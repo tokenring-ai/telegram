@@ -2,7 +2,7 @@ import {AgentTeam, TokenRingPackage} from "@tokenring-ai/agent";
 import packageJSON from './package.json' with {type: 'json'};
 import TelegramService, {TelegramServiceConfigSchema} from "./TelegramService.ts";
 
-export const packageInfo: TokenRingPackage = {
+export default {
   name: packageJSON.name,
   version: packageJSON.version,
   description: packageJSON.description,
@@ -13,6 +13,6 @@ export const packageInfo: TokenRingPackage = {
       agentTeam.services.register(new TelegramService(telegramConfig));
     }
   },
-};
+} as TokenRingPackage;
 
 export {default as TelegramBotService} from "./TelegramService.ts";
