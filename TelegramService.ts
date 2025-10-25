@@ -1,7 +1,7 @@
-import { Agent, AgentTeam } from "@tokenring-ai/agent";
-import { TokenRingService } from "@tokenring-ai/agent/types";
+import {Agent, AgentConfigService, AgentTeam} from "@tokenring-ai/agent";
+import {TokenRingService} from "@tokenring-ai/agent/types";
+import {z} from "zod";
 import TelegramBot = require('node-telegram-bot-api');
-import { z } from "zod";
 
 export const TelegramServiceConfigSchema = z.object({
   botToken: z.string().min(1, "Bot token is required"),
@@ -35,8 +35,9 @@ export default class TelegramService implements TokenRingService {
   }
 
   private async getOrCreateAgentForUser(userId: string): Promise<Agent> {
+    const agentConfigService = this.agentTeam!.requireService(AgentConfigService);
     if (!this.userAgents.has(userId)) {
-      const agent = await this.agentTeam!.createAgent(this.defaultAgentType);
+      const agent = await agentConfigService.spawnAgent(this.defaultAgentType, this.agentTeam!);
       this.userAgents.set(userId, agent);
     }
     return this.userAgents.get(userId)!;

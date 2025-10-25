@@ -10,7 +10,7 @@ export default {
     const telegramConfig = agentTeam.getConfigSlice("telegram", TelegramServiceConfigSchema.optional());
 
     if (telegramConfig) {
-      agentTeam.services.register(new TelegramService(telegramConfig));
+      agentTeam.addServices(new TelegramService(telegramConfig));
     }
   },
 } as TokenRingPackage;
