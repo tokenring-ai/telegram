@@ -24,7 +24,7 @@ export default class TelegramService implements TokenRingService {
   private agentTeam: AgentTeam | null = null;
   private userAgents = new Map<string, Agent>();
 
-  constructor({ botToken, chatId, authorizedUserIds, defaultAgentType }: TelegramServiceConfig) {
+  constructor({botToken, chatId, authorizedUserIds, defaultAgentType}: TelegramServiceConfig) {
     if (!botToken) {
       throw new Error("TelegramBotService requires a botToken.");
     }
@@ -34,20 +34,11 @@ export default class TelegramService implements TokenRingService {
     this.defaultAgentType = defaultAgentType || "teamLeader";
   }
 
-  private async getOrCreateAgentForUser(userId: string): Promise<Agent> {
-    const agentConfigService = this.agentTeam!.requireService(AgentConfigService);
-    if (!this.userAgents.has(userId)) {
-      const agent = await agentConfigService.spawnAgent(this.defaultAgentType, this.agentTeam!);
-      this.userAgents.set(userId, agent);
-    }
-    return this.userAgents.get(userId)!;
-  }
-
   async start(agentTeam: AgentTeam): Promise<void> {
     this.running = true;
     this.agentTeam = agentTeam;
 
-    this.bot = new TelegramBot(this.botToken, { polling: false });
+    this.bot = new TelegramBot(this.botToken, {polling: false});
 
     // Set up message handler
     this.bot.on('message', async (msg: any) => {
@@ -77,7 +68,7 @@ export default class TelegramService implements TokenRingService {
               await this.bot!.sendMessage(chatId, response);
               break;
             }
-            await agent.handleInput({ message: text });
+            await agent.handleInput({message: text});
             response = "";
           }
         }
@@ -92,7 +83,7 @@ export default class TelegramService implements TokenRingService {
     });
 
     // Start polling
-    this.bot.startPolling({ restart: true });
+    this.bot.startPolling({restart: true});
 
     if (this.chatId) {
       await this.bot.sendMessage(this.chatId, "Telegram bot is online!");
@@ -101,7 +92,7 @@ export default class TelegramService implements TokenRingService {
 
   async stop(agentTeam: AgentTeam): Promise<void> {
     this.running = false;
-    
+
     // Clean up all user agents
     for (const [userId, agent] of this.userAgents.entries()) {
       await agentTeam.deleteAgent(agent);
@@ -116,5 +107,14 @@ export default class TelegramService implements TokenRingService {
       }
       this.bot = null;
     }
+  }
+
+  private async getOrCreateAgentForUser(userId: string): Promise<Agent> {
+    const agentConfigService = this.agentTeam!.requireService(AgentConfigService);
+    if (!this.userAgents.has(userId)) {
+      const agent = await agentConfigService.spawnAgent(this.defaultAgentType, this.agentTeam!);
+      this.userAgents.set(userId, agent);
+    }
+    return this.userAgents.get(userId)!;
   }
 }

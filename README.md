@@ -1,6 +1,7 @@
 # Telegram Service
 
-Integrates Telegram with TokenRing agents, enabling bot interactions. Each Telegram user gets their own persistent agent instance that maintains conversation history.
+Integrates Telegram with TokenRing agents, enabling bot interactions. Each Telegram user gets their own persistent agent
+instance that maintains conversation history.
 
 ## Prerequisites
 
@@ -14,7 +15,8 @@ Integrates Telegram with TokenRing agents, enabling bot interactions. Each Teleg
 
 1. **Create Telegram Bot** via [@BotFather](https://t.me/botfather)
 2. **Get Bot Token** from BotFather
-3. **Get Chat ID** (optional): Send a message to your bot, then visit `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+3. **Get Chat ID** (optional): Send a message to your bot, then visit
+   `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
 
 ## Configuration
 
