@@ -1,5 +1,7 @@
-import {Agent, AgentConfigService, AgentTeam} from "@tokenring-ai/agent";
-import {TokenRingService} from "@tokenring-ai/agent/types";
+import TokenRingApp from "@tokenring-ai/app"; 
+import {Agent, AgentManager} from "@tokenring-ai/agent";
+
+import {TokenRingService} from "@tokenring-ai/app/types";
 import {z} from "zod";
 import TelegramBot = require('node-telegram-bot-api');
 
@@ -21,22 +23,22 @@ export default class TelegramService implements TokenRingService {
   private authorizedUserIds: string[] = [];
   private defaultAgentType: string;
   private bot: TelegramBot | null = null;
-  private agentTeam: AgentTeam | null = null;
+  private app: TokenRingApp;
   private userAgents = new Map<string, Agent>();
 
-  constructor({botToken, chatId, authorizedUserIds, defaultAgentType}: TelegramServiceConfig) {
+  constructor(app: TokenRingApp, {botToken, chatId, authorizedUserIds, defaultAgentType}: TelegramServiceConfig) {
     if (!botToken) {
       throw new Error("TelegramBotService requires a botToken.");
     }
+    this.app = app;
     this.botToken = botToken;
     this.chatId = chatId;
     this.authorizedUserIds = authorizedUserIds || [];
     this.defaultAgentType = defaultAgentType || "teamLeader";
   }
 
-  async start(agentTeam: AgentTeam): Promise<void> {
+  async start(): Promise<void> {
     this.running = true;
-    this.agentTeam = agentTeam;
 
     this.bot = new TelegramBot(this.botToken, {polling: false});
 
@@ -90,12 +92,13 @@ export default class TelegramService implements TokenRingService {
     }
   }
 
-  async stop(agentTeam: AgentTeam): Promise<void> {
+  async stop(): Promise<void> {
+    const agentManager = this.app.requireService(AgentManager);
     this.running = false;
 
     // Clean up all user agents
     for (const [userId, agent] of this.userAgents.entries()) {
-      await agentTeam.deleteAgent(agent);
+      await agentManager.deleteAgent(agent);
     }
     this.userAgents.clear();
 
@@ -110,9 +113,9 @@ export default class TelegramService implements TokenRingService {
   }
 
   private async getOrCreateAgentForUser(userId: string): Promise<Agent> {
-    const agentConfigService = this.agentTeam!.requireService(AgentConfigService);
+    const agentManager = this.app!.requireService(AgentManager);
     if (!this.userAgents.has(userId)) {
-      const agent = await agentConfigService.spawnAgent(this.defaultAgentType, this.agentTeam!);
+      const agent = await agentManager.spawnAgent(this.defaultAgentType);
       this.userAgents.set(userId, agent);
     }
     return this.userAgents.get(userId)!;

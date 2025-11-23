@@ -1,4 +1,5 @@
-import {AgentTeam, TokenRingPackage} from "@tokenring-ai/agent";
+import TokenRingApp from "@tokenring-ai/app";
+import {TokenRingPlugin} from "@tokenring-ai/app";
 import packageJSON from './package.json' with {type: 'json'};
 import TelegramService, {TelegramServiceConfigSchema} from "./TelegramService.ts";
 
@@ -6,13 +7,13 @@ export default {
   name: packageJSON.name,
   version: packageJSON.version,
   description: packageJSON.description,
-  install(agentTeam: AgentTeam) {
-    const telegramConfig = agentTeam.getConfigSlice("telegram", TelegramServiceConfigSchema.optional());
+  install(app: TokenRingApp) {
+    const telegramConfig = app.getConfigSlice("telegram", TelegramServiceConfigSchema.optional());
 
     if (telegramConfig) {
-      agentTeam.addServices(new TelegramService(telegramConfig));
+      app.addServices(new TelegramService(app, telegramConfig));
     }
   },
-} as TokenRingPackage;
+} as TokenRingPlugin;
 
 export {default as TelegramBotService} from "./TelegramService.ts";
