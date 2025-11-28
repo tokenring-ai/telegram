@@ -18,10 +18,10 @@ export default class TelegramService implements TokenRingService {
   name = "TelegramService";
   description = "Provides a Telegram bot for interacting with TokenRing agents.";
   private running = false;
-  private botToken: string;
+  private readonly botToken: string;
   private chatId?: string;
   private authorizedUserIds: string[] = [];
-  private defaultAgentType: string;
+  private readonly defaultAgentType: string;
   private bot: TelegramBot | null = null;
   private app: TokenRingApp;
   private userAgents = new Map<string, Agent>();
@@ -85,7 +85,7 @@ export default class TelegramService implements TokenRingService {
     });
 
     // Start polling
-    this.bot.startPolling({restart: true});
+    await this.bot.startPolling({restart: true});
 
     if (this.chatId) {
       await this.bot.sendMessage(this.chatId, "Telegram bot is online!");
