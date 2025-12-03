@@ -1,4 +1,5 @@
-import TokenRingApp from "@tokenring-ai/app"; 
+import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
+import TokenRingApp from "@tokenring-ai/app";
 import {Agent, AgentManager} from "@tokenring-ai/agent";
 
 import {TokenRingService} from "@tokenring-ai/app/types";
@@ -58,21 +59,42 @@ export default class TelegramService implements TokenRingService {
 
         this.chatId = chatId.toString();
         const agent = await this.getOrCreateAgentForUser(userId);
-        let response = "";
 
-        for await (const event of agent.events(new AbortController().signal)) {
-          if (event.type === 'output.chat') {
-            response += event.data.content;
-          } else if (event.type === 'output.system') {
-            response += `\n[${event.data.level.toUpperCase()}]: ${event.data.message}\n`;
-          } else if (event.type === 'state.idle') {
-            if (response) {
-              await this.bot!.sendMessage(chatId, response);
-              break;
+        // Wait for agent to be idle before sending new message
+        const eventCursor = (await agent.waitForState(AgentEventState, (state) => state.idle)).getEventCursorFromCurrentPosition();
+
+        // Send the message to the agent
+        const requestId = agent.handleInput({message: text});
+
+        // Subscribe to agent events to process the response
+        const unsubscribe = agent.subscribeState(AgentEventState, (state) => {
+          for (const event of state.yieldEventsByCursor(eventCursor)) {
+            switch (event.type) {
+              case 'output.chat':
+                this.handleChatOutput(chatId, event.data.content);
+                break;
+              case 'output.system':
+                this.handleSystemOutput(chatId, event.data.message, event.data.level);
+                break;
+              case 'input.handled':
+                if (event.data.requestId === requestId) {
+                  unsubscribe();
+                  // If no response was sent, send a default message
+                  if (!this.lastResponseSent) {
+                    this.bot!.sendMessage(chatId, "No response received from agent.");
+                  }
+                }
+                break;
             }
-            await agent.handleInput({message: text});
-            response = "";
           }
+        });
+
+        // Set timeout for the response
+        if (agent.config.maxRunTime > 0) {
+          setTimeout(() => {
+            unsubscribe();
+            this.bot!.sendMessage(chatId, `Agent timed out after ${agent.config.maxRunTime} seconds.`);
+          }, agent.config.maxRunTime * 1000);
         }
       } catch (error) {
         console.error('Error processing message:', error);
@@ -90,6 +112,19 @@ export default class TelegramService implements TokenRingService {
     if (this.chatId) {
       await this.bot.sendMessage(this.chatId, "Telegram bot is online!");
     }
+  }
+
+  private lastResponseSent = false;
+
+  private async handleChatOutput(chatId: number, content: string): Promise<void> {
+    // Accumulate chat content and send when complete
+    this.lastResponseSent = true;
+    await this.bot!.sendMessage(chatId, content);
+  }
+
+  private async handleSystemOutput(chatId: number, message: string, level: string): Promise<void> {
+    const formattedMessage = `[${level.toUpperCase()}]: ${message}`;
+    await this.bot!.sendMessage(chatId, formattedMessage);
   }
 
   async stop(): Promise<void> {
