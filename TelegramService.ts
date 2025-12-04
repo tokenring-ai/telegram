@@ -150,7 +150,7 @@ export default class TelegramService implements TokenRingService {
   private async getOrCreateAgentForUser(userId: string): Promise<Agent> {
     const agentManager = this.app!.requireService(AgentManager);
     if (!this.userAgents.has(userId)) {
-      const agent = await agentManager.spawnAgent(this.defaultAgentType);
+      const agent = await agentManager.spawnAgent({ agentType: this.defaultAgentType, headless: false });
       this.userAgents.set(userId, agent);
     }
     return this.userAgents.get(userId)!;
