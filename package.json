@@ -1,22 +1,22 @@
 {
- "name": "@tokenring-ai/telegram",
- "description": "A Token Ring plugin providing Telegram integration.",
- "version": "0.2.0",
- "dependencies": {
-  "@tokenring-ai/app": "0.2.0",
-  "@tokenring-ai/chat": "0.2.0",
-  "zod": "^4.1.13",
-  "@tokenring-ai/agent": "0.2.0",
-  "node-telegram-bot-api": "^0.66.0"
- },
- "devDependencies": {
-  "@types/node-telegram-bot-api": "^0.64.13"
- },
- "exports": {
-  ".": "./index.ts",
-  "./*": "./*.ts"
- },
- "types": "./index.ts",
- "license": "MIT",
- "type": "module"
+  "name": "@tokenring-ai/telegram",
+  "description": "A Token Ring plugin providing Telegram integration.",
+  "version": "0.2.0",
+  "dependencies": {
+    "@tokenring-ai/app": "0.2.0",
+    "@tokenring-ai/chat": "0.2.0",
+    "zod": "^4.1.13",
+    "@tokenring-ai/agent": "0.2.0",
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "devDependencies": {
+    "@types/node-telegram-bot-api": "^0.64.13"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./*": "./*.ts"
+  },
+  "types": "./index.ts",
+  "license": "MIT",
+  "type": "module"
 }
