@@ -3,6 +3,7 @@ import TokenRingApp from "@tokenring-ai/app";
 import {Agent, AgentManager} from "@tokenring-ai/agent";
 
 import {TokenRingService} from "@tokenring-ai/app/types";
+import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
 import {z} from "zod";
 import TelegramBot = require('node-telegram-bot-api');
 
@@ -38,7 +39,7 @@ export default class TelegramService implements TokenRingService {
     this.defaultAgentType = defaultAgentType || "teamLeader";
   }
 
-  async start(): Promise<void> {
+  async run(signal: AbortSignal): Promise<void> {
     this.running = true;
 
     this.bot = new TelegramBot(this.botToken, {polling: false});
@@ -112,6 +113,26 @@ export default class TelegramService implements TokenRingService {
     if (this.chatId) {
       await this.bot.sendMessage(this.chatId, "Telegram bot is online!");
     }
+
+    return waitForAbort(signal, async (ev) => {
+      const agentManager = this.app.requireService(AgentManager);
+      this.running = false;
+
+      // Clean up all user agents
+      for (const [userId, agent] of this.userAgents.entries()) {
+        await agentManager.deleteAgent(agent);
+      }
+      this.userAgents.clear();
+
+      if (this.bot) {
+        try {
+          this.bot.stopPolling();
+        } catch (error) {
+          console.error('Error stopping polling:', error);
+        }
+        this.bot = null;
+      }
+    });
   }
 
   private lastResponseSent = false;
@@ -125,26 +146,6 @@ export default class TelegramService implements TokenRingService {
   private async handleSystemOutput(chatId: number, message: string, level: string): Promise<void> {
     const formattedMessage = `[${level.toUpperCase()}]: ${message}`;
     await this.bot!.sendMessage(chatId, formattedMessage);
-  }
-
-  async stop(): Promise<void> {
-    const agentManager = this.app.requireService(AgentManager);
-    this.running = false;
-
-    // Clean up all user agents
-    for (const [userId, agent] of this.userAgents.entries()) {
-      await agentManager.deleteAgent(agent);
-    }
-    this.userAgents.clear();
-
-    if (this.bot) {
-      try {
-        this.bot.stopPolling();
-      } catch (error) {
-        console.error('Error stopping polling:', error);
-      }
-      this.bot = null;
-    }
   }
 
   private async getOrCreateAgentForUser(userId: string): Promise<Agent> {
