@@ -126,7 +126,7 @@ export default class TelegramService implements TokenRingService {
 
       if (this.bot) {
         try {
-          this.bot.stopPolling();
+          await this.bot.stopPolling();
         } catch (error) {
           console.error('Error stopping polling:', error);
         }
