@@ -15,4 +15,4 @@ export default {
       app.addServices(new TelegramService(app, telegramConfig));
     }
   },
-} as TokenRingPlugin;
+} satisfies TokenRingPlugin;
