@@ -72,10 +72,16 @@ export default class TelegramService implements TokenRingService {
           for (const event of state.yieldEventsByCursor(eventCursor)) {
             switch (event.type) {
               case 'output.chat':
-                this.handleChatOutput(chatId, event.content);
+                this.handleChatOutput(chatId, event.message);
                 break;
-              case 'output.system':
-                this.handleSystemOutput(chatId, event.message, event.level);
+              case 'output.info':
+                this.handleSystemOutput(chatId, event.message, 'info');
+                break;
+              case 'output.warning':
+                this.handleSystemOutput(chatId, event.message, 'warning');
+                break;
+              case 'output.error':
+                this.handleSystemOutput(chatId, event.message, 'error');
                 break;
               case 'input.handled':
                 if (event.requestId === requestId) {
