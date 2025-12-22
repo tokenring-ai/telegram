@@ -10,7 +10,9 @@
     "node-telegram-bot-api": "^0.67.0"
   },
   "devDependencies": {
-    "@types/node-telegram-bot-api": "^0.64.13"
+    "@types/node-telegram-bot-api": "^0.64.13",
+    "vitest": "catalog:",
+    "typescript": "catalog:"
   },
   "exports": {
     ".": "./index.ts",
@@ -18,5 +20,11 @@
   },
   "types": "./index.ts",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc --noEmit",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  }
 }
