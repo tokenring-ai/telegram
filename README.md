@@ -20,7 +20,7 @@ This package provides a Telegram bot service that integrates with TokenRing agen
 ## Installation
 
 ```bash
-npm install @tokenring-ai/telegram
+bun install @tokenring-ai/telegram
 # or
 yarn add @tokenring-ai/telegram
 # or
@@ -30,7 +30,6 @@ bun add @tokenring-ai/telegram
 ## Dependencies
 
 - `@tokenring-ai/app` ^0.2.0 - Application framework and service management
-- `@tokenring-ai/chat` ^0.2.0 - Chat integration
 - `@tokenring-ai/agent` ^0.2.0 - Agent management and core functionality
 - `@tokenring-ai/utility` - Utility functions for promise handling
 - `node-telegram-bot-api` ^0.67.0 - Telegram bot API
@@ -69,7 +68,7 @@ The recommended way to use the Telegram service is through the TokenRing plugin 
 
 ```typescript
 import TokenRingApp from '@tokenring-ai/app';
-import telegramPlugin from '@tokenring-ai/telegram/plugin';
+import telegramPlugin from '@tokenring-ai/telegram';
 
 const app = new TokenRingApp({
   // Your app configuration
@@ -200,7 +199,9 @@ TELEGRAM_DEFAULT_AGENT_TYPE=teamLeader
 The service handles the following agent events:
 
 - **`output.chat`**: Processes chat content and sends accumulated responses to Telegram
-- **`output.system`**: Formats system messages with level indicators (INFO, WARNING, ERROR)
+- **`output.info`**: Formats system messages with level indicators (INFO)
+- **`output.warning`**: Formats system messages with level indicators (WARNING)
+- **`output.error`**: Formats system messages with level indicators (ERROR)
 - **`input.handled`**: Handles input completion, cleans up subscriptions, and manages timeouts
 
 ## Error Handling
@@ -302,15 +303,3 @@ The service requires:
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## Support
-
-For issues and questions, please open an issue in the TokenRing repository.
