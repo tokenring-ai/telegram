@@ -27,14 +27,6 @@ yarn add @tokenring-ai/telegram
 bun add @tokenring-ai/telegram
 ```
 
-## Dependencies
-
-- `@tokenring-ai/app` ^0.2.0 - Application framework and service management
-- `@tokenring-ai/agent` ^0.2.0 - Agent management and core functionality
-- `@tokenring-ai/utility` - Utility functions for promise handling
-- `node-telegram-bot-api` ^0.67.0 - Telegram bot API
-- `zod` - Schema validation
-
 ## Configuration
 
 The service uses Zod schema validation for configuration. Here are the available options:
@@ -287,12 +279,6 @@ app.install({
 });
 ```
 
-### Service Dependencies
-
-The service requires:
-- `AgentManager`: For creating and managing user agents
-- `TokenRingApp`: For application context and configuration
-
 ### Agent Integration
 
 - **Agent Creation**: Creates agents using `agentType` configuration
@@ -302,4 +288,4 @@ The service requires:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](./LICENSE) file for details.
