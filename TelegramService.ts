@@ -5,45 +5,21 @@ import TokenRingApp from "@tokenring-ai/app";
 
 import {TokenRingService} from "@tokenring-ai/app/types";
 import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
-import {z} from "zod";
+import type {ParsedTelegramServiceConfig} from "./schema.ts";
 import TelegramBot = require('node-telegram-bot-api');
-
-export const TelegramServiceConfigSchema = z.object({
-  botToken: z.string().min(1, "Bot token is required"),
-  chatId: z.string().optional(),
-  authorizedUserIds: z.array(z.string()).optional(),
-  defaultAgentType: z.string().optional()
-});
-
-export type TelegramServiceConfig = z.infer<typeof TelegramServiceConfigSchema>;
 
 export default class TelegramService implements TokenRingService {
   name = "TelegramService";
   description = "Provides a Telegram bot for interacting with TokenRing agents.";
-  private running = false;
-  private readonly botToken: string;
   private chatId?: string;
-  private authorizedUserIds: string[] = [];
-  private readonly defaultAgentType: string;
   private bot: TelegramBot | null = null;
-  private app: TokenRingApp;
   private userAgents = new Map<string, Agent>();
 
-  constructor(app: TokenRingApp, {botToken, chatId, authorizedUserIds, defaultAgentType}: TelegramServiceConfig) {
-    if (!botToken) {
-      throw new Error("TelegramBotService requires a botToken.");
-    }
-    this.app = app;
-    this.botToken = botToken;
-    this.chatId = chatId;
-    this.authorizedUserIds = authorizedUserIds || [];
-    this.defaultAgentType = defaultAgentType || "teamLeader";
+  constructor(private app: TokenRingApp, private options: ParsedTelegramServiceConfig) {
   }
 
   async run(signal: AbortSignal): Promise<void> {
-    this.running = true;
-
-    this.bot = new TelegramBot(this.botToken, {polling: false});
+    this.bot = new TelegramBot(this.options.botToken, {polling: false});
 
     // Set up message handler
     this.bot.on('message', async (msg: any) => {
@@ -54,7 +30,7 @@ export default class TelegramService implements TokenRingService {
 
         if (!userId || !text.trim()) return;
 
-        if (this.authorizedUserIds.length > 0 && !this.authorizedUserIds.includes(userId)) {
+        if (this.options.authorizedUserIds.length > 0 && !this.options.authorizedUserIds.includes(userId)) {
           await this.bot!.sendMessage(chatId, "Sorry, you are not authorized to use this bot.");
           return;
         }
@@ -125,7 +101,6 @@ export default class TelegramService implements TokenRingService {
 
     return waitForAbort(signal, async (ev) => {
       const agentManager = this.app.requireService(AgentManager);
-      this.running = false;
 
       // Clean up all user agents
       for (const [userId, agent] of this.userAgents.entries()) {
@@ -160,7 +135,7 @@ export default class TelegramService implements TokenRingService {
   private async getOrCreateAgentForUser(userId: string): Promise<Agent> {
     const agentManager = this.app!.requireService(AgentManager);
     if (!this.userAgents.has(userId)) {
-      const agent = await agentManager.spawnAgent({ agentType: this.defaultAgentType, headless: false });
+      const agent = await agentManager.spawnAgent({agentType: this.options.defaultAgentType, headless: false});
       this.userAgents.set(userId, agent);
     }
     return this.userAgents.get(userId)!;

@@ -1,7 +1,8 @@
 import {TokenRingPlugin} from "@tokenring-ai/app";
 import {z} from "zod";
 import packageJSON from './package.json' with {type: 'json'};
-import TelegramService, {TelegramServiceConfigSchema} from "./TelegramService.ts";
+import {TelegramServiceConfigSchema} from "./schema.ts";
+import TelegramService from "./TelegramService.ts";
 
 const packageConfigSchema = z.object({
   telegram: TelegramServiceConfigSchema.optional()
