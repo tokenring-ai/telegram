@@ -5,14 +5,14 @@
   "dependencies": {
     "@tokenring-ai/app": "0.2.0",
     "@tokenring-ai/chat": "0.2.0",
-    "zod": "catalog:",
+    "zod": "^4.3.6",
     "@tokenring-ai/agent": "0.2.0",
     "node-telegram-bot-api": "^0.67.0"
   },
   "devDependencies": {
     "@types/node-telegram-bot-api": "^0.64.13",
-    "vitest": "catalog:",
-    "typescript": "catalog:"
+    "vitest": "^4.0.18",
+    "typescript": "^5.9.3"
   },
   "exports": {
     ".": "./index.ts",
