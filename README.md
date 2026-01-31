@@ -39,14 +39,14 @@ The service uses Zod schema validation for configuration. Here are the available
 
 - **`chatId`** (string): Chat ID for startup announcements. If provided, the bot will send a "Telegram bot is online!" message when started.
 - **`authorizedUserIds`** (string[]): Array of Telegram user IDs allowed to interact with the bot. If empty or undefined, all users can interact.
-- **`defaultAgentType`** (string): Default agent type to create for users (defaults to "teamLeader").
+- **`defaultAgentType`** (string): Default agent type to create for users.
 
 ```typescript
 export const TelegramServiceConfigSchema = z.object({
   botToken: z.string().min(1, "Bot token is required"),
   chatId: z.string().optional(),
-  authorizedUserIds: z.array(z.string()).optional(),
-  defaultAgentType: z.string().optional()
+  authorizedUserIds: z.array(z.string()).default([]),
+  defaultAgentType: z.string()
 });
 
 export type TelegramServiceConfig = z.infer<typeof TelegramServiceConfigSchema>;
@@ -84,7 +84,8 @@ For more control, you can create the service manually:
 
 ```typescript
 import TokenRingApp from '@tokenring-ai/app';
-import TelegramService, { TelegramServiceConfigSchema } from '@tokenring-ai/telegram';
+import {TelegramBotService} from '@tokenring-ai/telegram';
+import {TelegramServiceConfigSchema} from '@tokenring-ai/telegram';
 
 const app = new TokenRingApp({
   // Your app configuration
@@ -100,7 +101,7 @@ const config: TelegramServiceConfig = {
 // Validate configuration
 const validatedConfig = TelegramServiceConfigSchema.parse(config);
 
-const telegramService = new TelegramService(app, validatedConfig);
+const telegramService = new TelegramBotService(app, validatedConfig);
 app.addServices(telegramService);
 
 await telegramService.run(signal);
@@ -111,11 +112,11 @@ await telegramService.run(signal);
 ### Exports
 
 - **`default`** - Plugin object for TokenRingApp installation
-- **`TelegramService`** - The main service class
+- **`TelegramBotService`** - The main service class (note: exported as `TelegramBotService` from index.ts)
 - **`TelegramServiceConfigSchema`** - Zod schema for configuration validation
 - **`TelegramServiceConfig`** - TypeScript type for configuration
 
-### TelegramService Class
+### TelegramBotService Class
 
 #### Constructor
 
@@ -154,7 +155,9 @@ constructor(app: TokenRingApp, config: TelegramServiceConfig)
 4. **Input Handling**: Sends message to agent for processing
 5. **Event Processing**: Subscribes to agent events:
    - `output.chat`: Sends chat responses to Telegram
-   - `output.system`: Sends system messages with level formatting
+   - `output.info`: Sends system messages with level formatting
+   - `output.warning`: Sends system messages with level formatting
+   - `output.error`: Sends system messages with level formatting
    - `input.handled`: Cleans up event subscription and handles timeouts
 6. **Response Accumulation**: Accumulates chat content and sends when complete
 7. **Timeout Handling**: Implements configurable timeout with user feedback
@@ -257,7 +260,7 @@ Ensure these environment variables are properly set:
 - `TELEGRAM_BOT_TOKEN`: Your bot token from @BotFather
 - `TELEGRAM_CHAT_ID`: Optional chat ID for startup messages
 - `TELEGRAM_AUTHORIZED_USER_IDS`: Comma-separated list of authorized user IDs
-- `TELEGRAM_DEFAULT_AGENT_TYPE`: Agent type for new users (default: "teamLeader")
+- `TELEGRAM_DEFAULT_AGENT_TYPE`: Agent type for new users
 
 ## Integration with TokenRing
 
@@ -270,10 +273,10 @@ app.install({
   name: '@tokenring-ai/telegram',
   version: '0.2.0',
   description: 'A TokenRing plugin providing Telegram integration.',
-  install(app: TokenRingApp) {
-    const config = app.getConfigSlice("telegram", TelegramServiceConfigSchema.optional());
-    if (config) {
-      app.addServices(new TelegramService(app, config));
+  install(app, config) {
+    const telegramConfig = config.telegram;
+    if (telegramConfig) {
+      app.addServices(new TelegramBotService(app, telegramConfig));
     }
   }
 });
