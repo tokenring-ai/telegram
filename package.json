@@ -7,6 +7,7 @@
     "@tokenring-ai/chat": "0.2.0",
     "zod": "^4.3.6",
     "@tokenring-ai/agent": "0.2.0",
+    "@tokenring-ai/utility": "0.2.0",
     "node-telegram-bot-api": "^0.67.0"
   },
   "devDependencies": {
