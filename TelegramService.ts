@@ -9,7 +9,7 @@ import type {ParsedTelegramServiceConfig} from "./schema.ts";
 import TelegramBot = require('node-telegram-bot-api');
 
 export default class TelegramService implements TokenRingService {
-  name = "TelegramService";
+  readonly name = "TelegramService";
   description = "Provides a Telegram bot for interacting with TokenRing agents.";
   private chatId?: string;
   private bot: TelegramBot | null = null;
