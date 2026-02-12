@@ -10,6 +10,8 @@ This package provides a Telegram bot service that integrates with TokenRing agen
 
 - **Per-User Agents**: Each Telegram user gets a dedicated agent with persistent chat history
 - **Event-Driven Communication**: Handles agent events and sends responses back to Telegram
+- **Direct Messaging with Replies**: Send messages to users and await responses via Telegram reply mechanism
+- **Escalation Provider**: Implements EscalationProvider interface for agent-to-human escalation workflows
 - **Authorization**: User whitelist for restricted access control
 - **Automatic Agent Management**: Creates and manages agents for each user automatically
 - **Error Handling**: Robust error handling with user-friendly error messages
@@ -49,7 +51,7 @@ export const TelegramServiceConfigSchema = z.object({
   defaultAgentType: z.string()
 });
 
-export type TelegramServiceConfig = z.infer<typeof TelegramServiceConfigSchema>;
+export type ParsedTelegramServiceConfig = z.output<typeof TelegramServiceConfigSchema>;
 ```
 
 ## Usage
@@ -85,13 +87,13 @@ For more control, you can create the service manually:
 ```typescript
 import TokenRingApp from '@tokenring-ai/app';
 import {TelegramBotService} from '@tokenring-ai/telegram';
-import {TelegramServiceConfigSchema} from '@tokenring-ai/telegram';
+import {TelegramServiceConfigSchema} from '@tokenring-ai/telegram/schema';
 
 const app = new TokenRingApp({
   // Your app configuration
 });
 
-const config: TelegramServiceConfig = {
+const config: ParsedTelegramServiceConfig = {
   botToken: process.env.TELEGRAM_BOT_TOKEN!,
   chatId: process.env.TELEGRAM_CHAT_ID,
   authorizedUserIds: ['123456789', '987654321'],
@@ -107,21 +109,109 @@ app.addServices(telegramService);
 await telegramService.run(signal);
 ```
 
+## Direct Messaging and Escalation
+
+The Telegram service supports direct messaging with reply-based responses, enabling synchronous communication between agents and users.
+
+### Communication Channel API
+
+```typescript
+import {TelegramBotService} from '@tokenring-ai/telegram';
+
+const telegramService = agent.requireServiceByType(TelegramBotService);
+
+// Create a communication channel with a user
+const channel = telegramService.createCommunicationChannelWithUser('123456789');
+
+// Send a message
+await channel.send('Please approve this deployment');
+
+// Listen for a response
+channel.listen((message) => {
+  console.log('User responded:', message);
+});
+```
+
+### How Reply Handling Works
+
+1. Service sends message to user via Telegram
+2. Message ID is stored with a reply handler
+3. User replies to the message using Telegram's reply feature
+4. Service detects the reply and invokes registered listeners with the response text
+5. Confirmation message (✓ Response received) is sent to user
+
+### Escalation Provider Integration
+
+The Telegram service implements the `EscalationProvider` interface from `@tokenring-ai/escalation`, allowing agents to escalate decisions to human users:
+
+```typescript
+import escalationPlugin from '@tokenring-ai/escalation';
+import telegramPlugin from '@tokenring-ai/telegram';
+
+const app = new TokenRingApp({
+  escalation: {
+    providers: {
+      telegram: {} // Telegram provider auto-registered
+    },
+    groups: {
+      "admins": ["123456789@telegram", "987654321@telegram"]
+    }
+  },
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN!,
+    defaultAgentType: 'teamLeader'
+  }
+});
+
+app.install(escalationPlugin);
+app.install(telegramPlugin);
+```
+
+### Using Escalation in Agents
+
+```typescript
+// In agent code or via /escalate command
+const escalationService = agent.requireServiceByType(EscalationService);
+
+// Create a communication channel and send message
+const channel = await escalationService.initiateContactWithUserOrGroup(
+  '123456789@telegram',
+  'Approve production deployment?',
+  agent
+);
+
+// Listen for response
+channel.listen((message) => {
+  if (message.toLowerCase().includes('yes')) {
+    // Proceed with deployment
+    console.log('Deployment approved');
+  }
+  channel.close();
+});
+```
+
+### Reply Security
+
+When a user replies to a bot-initiated message:
+- Authorization checks are bypassed (bot initiated the conversation)
+- Reply handlers are automatically cleaned up after response
+- Only replies to tracked messages are processed
+
 ## API Reference
 
 ### Exports
 
 - **`default`** - Plugin object for TokenRingApp installation
-- **`TelegramBotService`** - The main service class (note: exported as `TelegramBotService` from index.ts)
-- **`TelegramServiceConfigSchema`** - Zod schema for configuration validation
-- **`TelegramServiceConfig`** - TypeScript type for configuration
+- **`TelegramBotService`** - The main service class (same as `TelegramService`)
+- **`TelegramEscalationProvider`** - Escalation provider implementation
+- **`TelegramServiceConfigSchema`** - Zod schema for configuration validation (in `@tokenring-ai/telegram/schema`)
 
 ### TelegramBotService Class
 
 #### Constructor
 
 ```typescript
-constructor(app: TokenRingApp, config: TelegramServiceConfig)
+constructor(app: TokenRingApp, config: ParsedTelegramServiceConfig)
 ```
 
 - **app**: TokenRingApp instance
@@ -130,18 +220,18 @@ constructor(app: TokenRingApp, config: TelegramServiceConfig)
 #### Methods
 
 - **`run(signal: AbortSignal): Promise<void>`**: Starts the Telegram bot and begins polling for messages. Handles the complete service lifecycle including startup, message processing, and graceful shutdown.
+- **`createCommunicationChannelWithUser(userId: string)`**: Creates a communication channel for interacting with a specific user. Returns a `CommunicationChannel` object with `send`, `listen`, `unlisten`, and `close` methods.
 
 #### Properties
 
 - **`name`**: Service identifier ("TelegramService")
 - **`description`**: Service description
-- **`running`**: Service running status
 
 ### Service Lifecycle
 
-1. **Initialization**: Service creates Telegram bot instance with polling disabled
+1. **Initialization**: Service creates Telegram bot instance
 2. **Message Handler Setup**: Configures message processing with authorization checks
-3. **Event Subscription**: Subscribes to agent events for response handling
+3. **Reply Handler Setup**: Sets up reply detection for escalation messages
 4. **Polling Start**: Begins Telegram API polling
 5. **Startup Message**: Sends "online" message to configured chat ID if provided
 6. **Message Processing**: Handles incoming messages with agent creation and event processing
@@ -149,18 +239,31 @@ constructor(app: TokenRingApp, config: TelegramServiceConfig)
 
 ## Message Processing Flow
 
-1. **Authorization Check**: Verifies user is authorized (if user whitelist is configured)
-2. **Agent Management**: Gets or creates dedicated agent for the user
-3. **State Wait**: Waits for agent to be idle before processing new input
-4. **Input Handling**: Sends message to agent for processing
-5. **Event Processing**: Subscribes to agent events:
+### Regular Messages
+
+1. **Reply Detection**: Check if message is a reply to a tracked message
+2. **Reply Handling**: If reply detected, invoke listeners and skip agent processing
+3. **Authorization Check**: Verifies user is authorized (if user whitelist is configured)
+4. **Agent Management**: Gets or creates dedicated agent for the user
+5. **State Wait**: Waits for agent to be idle before processing new input
+6. **Input Handling**: Sends message to agent for processing
+7. **Event Processing**: Subscribes to agent events:
    - `output.chat`: Sends chat responses to Telegram
    - `output.info`: Sends system messages with level formatting
    - `output.warning`: Sends system messages with level formatting
    - `output.error`: Sends system messages with level formatting
    - `input.handled`: Cleans up event subscription and handles timeouts
-6. **Response Accumulation**: Accumulates chat content and sends when complete
-7. **Timeout Handling**: Implements configurable timeout with user feedback
+8. **Response Accumulation**: Accumulates chat content and sends when complete
+9. **Timeout Handling**: Implements configurable timeout with user feedback
+
+### Direct Messages (Escalation)
+
+1. **Message Sent**: Bot sends message to user via `CommunicationChannel.send()`
+2. **Handler Registered**: Message ID is tracked for reply detection
+3. **User Replies**: User uses Telegram reply feature to respond
+4. **Reply Processed**: Registered listeners are invoked with response text
+5. **Confirmation Sent**: User receives "✓ Response received" confirmation
+6. **Cleanup**: Handler removed from registry
 
 ## Getting Started
 
