@@ -132,7 +132,7 @@ export default class TelegramBot {
           }
         }
       },
-      close: async () => {
+      [Symbol.asyncDispose]: async () => {
         channel.closed = true;
         if (channel.resolve) {
           channel.resolve({ value: undefined, done: true });

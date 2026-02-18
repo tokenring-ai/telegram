@@ -3,7 +3,7 @@ import z from "zod";
 export const TelegramBotConfigSchema = z.object({
   name: z.string(),
   botToken: z.string().min(1, "Bot token is required"),
-  joinMessage: z.string(),
+  joinMessage: z.string().optional(),
   groups: z.record(z.string(), z.object({
     groupId: z.number().max(0, "Group ID must be a negative number"),
     allowedUsers: z.array(z.string()).default([]),
