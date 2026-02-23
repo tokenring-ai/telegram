@@ -83,7 +83,7 @@ export default class TelegramBot {
 
     const agentManager = this.app.requireService(AgentManager);
     for (const agent of this.groupAgents.values()) {
-      await agentManager.deleteAgent(agent);
+      await agentManager.deleteAgent(agent.id, "Telegram bot was shut down.");
     }
     this.groupAgents.clear();
 
