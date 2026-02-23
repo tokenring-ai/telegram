@@ -5,6 +5,7 @@ import TokenRingApp from "@tokenring-ai/app";
 import type {CommunicationChannel} from "@tokenring-ai/escalation/EscalationProvider";
 import TelegramBotAPI from 'node-telegram-bot-api';
 import type {ParsedTelegramBotConfig} from "./schema.ts";
+import TelegramService from "./TelegramService.ts";
 
 type UserChannel = {
   chatId: string;
@@ -34,6 +35,7 @@ export default class TelegramBot {
 
   constructor(
     private app: TokenRingApp,
+    private telegramService: TelegramService,
     private botName: string,
     private botConfig: ParsedTelegramBotConfig
   ) {}
@@ -42,19 +44,19 @@ export default class TelegramBot {
     this.bot = new TelegramBotAPI(this.botConfig.botToken, {polling: true});
     const botInfo = await this.bot.getMe();
     this.botUsername = botInfo.username;
-    this.app.serviceOutput(`Bot @${this.botUsername} started`);
+    this.app.serviceOutput(this.telegramService, `Bot @${this.botUsername} started`);
 
     this.bot.on('message', async (msg: any) => {
-      this.app.serviceOutput(`Raw message received: ${JSON.stringify(msg)}`);
+      this.app.serviceOutput(this.telegramService, `Raw message received: ${JSON.stringify(msg)}`);
       try {
         await this.handleMessage(msg);
       } catch (error) {
-        this.app.serviceError('Error processing message:', error);
+        this.app.serviceError(this.telegramService, 'Error processing message:', error);
       }
     });
 
     this.bot.on('polling_error', (error: any) => {
-      this.app.serviceError('Polling error:', error);
+      this.app.serviceError(this.telegramService, 'Polling error:', error);
     });
 
     if (this.botConfig.joinMessage) {
@@ -62,7 +64,7 @@ export default class TelegramBot {
         try {
           await this.bot.sendMessage(groupConfig.groupId, this.botConfig.joinMessage);
         } catch (error) {
-          this.app.serviceError(`Failed to announce to group ${groupConfig.groupId}:`, error);
+          this.app.serviceError(this.telegramService, `Failed to announce to group ${groupConfig.groupId}:`, error);
         }
       }
     }
@@ -90,7 +92,7 @@ export default class TelegramBot {
     try {
       await this.bot.stopPolling();
     } catch (error) {
-      this.app.serviceError('Error stopping polling:', error);
+      this.app.serviceError(this.telegramService, 'Error stopping polling:', error);
     }
   }
 
@@ -154,7 +156,7 @@ export default class TelegramBot {
 
     if (!userId || !text.trim()) return;
 
-    this.app.serviceOutput(`Message from ${userId} in chat ${chatId}: "${text}"`);
+    this.app.serviceOutput(this.telegramService, `Message from ${userId} in chat ${chatId}: "${text}"`);
 
     // Check if reply to tracked message
     const replyToMessageId = msg.reply_to_message?.message_id;
@@ -182,11 +184,11 @@ export default class TelegramBot {
     const chatType = msg.chat.type;
     if (chatType === 'group' || chatType === 'supergroup') {
       const mentionString = `@${this.botUsername}`;
-      this.app.serviceOutput(`Group message, checking if "${text}" starts with "${mentionString}"`);
+      this.app.serviceOutput(this.telegramService, `Group message, checking if "${text}" starts with "${mentionString}"`);
       if (!text.trim().startsWith(mentionString)) return;
 
       const groupConfig = Object.values(this.botConfig.groups).find(g => g.groupId === chatId);
-      this.app.serviceOutput(`Found group config: ${!!groupConfig}`);
+      this.app.serviceOutput(this.telegramService, `Found group config: ${!!groupConfig}`);
       if (!groupConfig) return;
 
       if (groupConfig.allowedUsers.length > 0 && !groupConfig.allowedUsers.includes(userId)) {
@@ -240,7 +242,7 @@ export default class TelegramBot {
       }
     } catch (error) {
       if (error instanceof Error && error.name !== 'AbortError') {
-        this.app.serviceError('Error processing message:', error);
+        this.app.serviceError(this.telegramService, 'Error processing message:', error);
       }
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -312,7 +314,7 @@ export default class TelegramBot {
           this.messageIdToBotUsername.set(sent.message_id, this.botUsername!);
         }
       } catch (error) {
-        this.app.serviceError('Error flushing partial buffer:', error);
+        this.app.serviceError(this.telegramService, 'Error flushing partial buffer:', error);
       }
 
       // Reset buffer for the remaining text so it starts a fresh message
@@ -343,7 +345,7 @@ export default class TelegramBot {
         }
       }
     } catch (error) {
-      this.app.serviceError('Error flushing buffer:', error);
+      this.app.serviceError(this.telegramService, 'Error flushing buffer:', error);
     }
   }
 
