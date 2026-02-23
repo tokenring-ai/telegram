@@ -32,6 +32,8 @@ export default class TelegramBot {
   private pendingChatIds = new Set<number>();
   private isProcessing = false;
   private messageIdToBotUsername = new Map<number, string>();
+  private activeRequests = new Map<string, { chatId: number; responseSent: boolean }>();
+  private groupListeners = new Set<number>();
 
   constructor(
     private app: TokenRingApp,
@@ -82,6 +84,8 @@ export default class TelegramBot {
     }
     this.pendingChatIds.clear();
     this.chatBuffers.clear();
+    this.groupListeners.clear();
+    this.activeRequests.clear();
 
     const agentManager = this.app.requireService(AgentManager);
     for (const agent of this.groupAgents.values()) {
@@ -202,53 +206,71 @@ export default class TelegramBot {
 
   private async handleAgentMessage(chatId: number, text: string, agentType: string): Promise<void> {
     const agent = await this.getOrCreateAgentForGroup(chatId, agentType);
+    this.ensureGroupListener(chatId, agent);
+
     await agent.waitForState(AgentExecutionState, (state) => state.idle);
 
-    let responseSent = false;
     const requestId = agent.handleInput({message: `/chat send ${text}`});
-    const abortController = new AbortController();
+    this.activeRequests.set(requestId, { chatId, responseSent: false });
+  }
+
+  private ensureGroupListener(chatId: number, agent: Agent): void {
+    if (this.groupListeners.has(chatId)) return;
+    this.groupListeners.add(chatId);
+
     const eventCursor = agent.getState(AgentEventState).getEventCursorFromCurrentPosition();
+    const abortController = new AbortController();
 
-    let timeoutHandle: NodeJS.Timeout | null = null;
-    if (agent.config.maxRunTime > 0) {
-      timeoutHandle = setTimeout(() => abortController.abort(), agent.config.maxRunTime * 1000);
-    }
-
-    try {
-      for await (const state of agent.subscribeStateAsync(AgentEventState, abortController.signal)) {
-        for (const event of state.yieldEventsByCursor(eventCursor)) {
-          switch (event.type) {
-            case 'output.chat':
-              responseSent = true;
-              this.handleChatOutput(chatId, event.message);
-              break;
-            case 'output.info':
-            case 'output.warning':
-            case 'output.error':
-              await this.bot.sendMessage(chatId, `[${event.type.split('.')[1].toUpperCase()}]: ${event.message}`);
-              break;
-            case 'input.handled':
-              if (event.requestId === requestId) {
-                this.pendingChatIds.add(chatId);
-                this.scheduleSend();
-                if (!responseSent) {
-                  await this.bot.sendMessage(chatId, "No response received from agent.");
+    (async () => {
+      try {
+        for await (const state of agent.subscribeStateAsync(AgentEventState, abortController.signal)) {
+          for (const event of state.yieldEventsByCursor(eventCursor)) {
+            switch (event.type) {
+              case 'output.chat': {
+                // Find any active request for this chatId to mark as responded
+                for (const [, req] of this.activeRequests) {
+                  if (req.chatId === chatId) {
+                    req.responseSent = true;
+                  }
                 }
-                abortController.abort();
+                this.handleChatOutput(chatId, event.message);
+                break;
               }
-              break;
+              case 'output.info':
+              case 'output.warning':
+              case 'output.error':
+                // Find any active request for this chatId to mark as responded
+                for (const [, req] of this.activeRequests) {
+                  if (req.chatId === chatId) {
+                    req.responseSent = true;
+                  }
+                }
+                this.handleChatOutput(chatId, `\n[${event.type.split('.')[1].toUpperCase()}]: ${event.message}\n`);
+
+                break;
+              case 'input.handled': {
+                const req = this.activeRequests.get(event.requestId);
+                if (req) {
+                  this.pendingChatIds.add(req.chatId);
+                  this.scheduleSend();
+                  await this.flushBuffer(req.chatId);
+                  this.chatBuffers.delete(req.chatId);
+                  if (!req.responseSent) {
+                    await this.bot.sendMessage(req.chatId, "No response received from agent.");
+                  }
+                  this.activeRequests.delete(event.requestId);
+                }
+                break;
+              }
+            }
           }
         }
+      } catch (error) {
+        if (error instanceof Error && error.name !== 'AbortError') {
+          this.app.serviceError(this.telegramService, 'Error in group listener:', error);
+        }
       }
-    } catch (error) {
-      if (error instanceof Error && error.name !== 'AbortError') {
-        this.app.serviceError(this.telegramService, 'Error processing message:', error);
-      }
-    } finally {
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-      this.pendingChatIds.add(chatId);
-      this.scheduleSend();
-    }
+    })();
   }
 
   private handleChatOutput(chatId: number, content: string): void {
