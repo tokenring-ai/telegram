@@ -64,7 +64,7 @@ export default class TelegramBot {
     if (this.botConfig.joinMessage) {
       for (const groupConfig of Object.values(this.botConfig.groups)) {
         try {
-          await this.bot.sendMessage(groupConfig.groupId, this.botConfig.joinMessage);
+          await this.bot.sendMessage(groupConfig.groupId, this.botConfig.joinMessage, { parse_mode: 'Markdown' });
         } catch (error) {
           this.app.serviceError(this.telegramService, `Failed to announce to group ${groupConfig.groupId}:`, error);
         }
@@ -122,7 +122,7 @@ export default class TelegramBot {
 
     return {
       send: async (message: string) => {
-        const sentMessage = await this.bot.sendMessage(chatId, message);
+        const sentMessage = await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         trackedMessageIds.add(sentMessage.message_id);
         this.userChannels.set(sentMessage.message_id, channel);
         this.messageIdToBotUsername.set(sentMessage.message_id, this.botUsername!);
@@ -200,7 +200,7 @@ export default class TelegramBot {
         return;
       }
 
-      await this.handleAgentMessage(chatId, text, groupConfig.agentType);
+      await this.handleAgentMessage(chatId, `From: ${msg.from.first_name}, Username: (@${msg.from.username}) ${text}`, groupConfig.agentType);
     }
   }
 
@@ -332,7 +332,7 @@ export default class TelegramBot {
             message_id: buffer.messageId
           });
         } else {
-          const sent = await this.bot.sendMessage(chatId, currentChunk);
+          const sent = await this.bot.sendMessage(chatId, currentChunk, { parse_mode: 'Markdown' });
           this.messageIdToBotUsername.set(sent.message_id, this.botUsername!);
         }
       } catch (error) {
@@ -349,7 +349,7 @@ export default class TelegramBot {
 
     try {
       if (!buffer.messageId) {
-        const sent = await this.bot.sendMessage(chatId, textToSend);
+        const sent = await this.bot.sendMessage(chatId, textToSend, { parse_mode: 'Markdown' });
         buffer.messageId = sent.message_id;
         buffer.lastSentText = textToSend;
         this.messageIdToBotUsername.set(sent.message_id, this.botUsername!);
