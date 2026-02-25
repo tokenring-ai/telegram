@@ -19,6 +19,7 @@ type ChatBuffer = {
   text: string;
   lastSentText?: string;
   messageId?: number;
+  isComplete?: boolean;
 };
 
 export default class TelegramBot {
@@ -251,10 +252,13 @@ export default class TelegramBot {
               case 'input.handled': {
                 const req = this.activeRequests.get(event.requestId);
                 if (req) {
+                  const buffer = this.chatBuffers.get(req.chatId);
+                  if (buffer) {
+                    buffer.isComplete = true;
+                  }
                   this.pendingChatIds.add(req.chatId);
                   this.scheduleSend();
-                  await this.flushBuffer(req.chatId);
-                  this.chatBuffers.delete(req.chatId);
+                  
                   if (!req.responseSent) {
                     await this.bot.sendMessage(req.chatId, "No response received from agent.");
                   }
@@ -368,6 +372,10 @@ export default class TelegramBot {
       }
     } catch (error) {
       this.app.serviceError(this.telegramService, 'Error flushing buffer:', error);
+    }
+
+    if (buffer.isComplete && buffer.text === buffer.lastSentText) {
+      this.chatBuffers.delete(chatId);
     }
   }
 
