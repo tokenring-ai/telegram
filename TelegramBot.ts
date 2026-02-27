@@ -1,7 +1,9 @@
 import {Agent, AgentManager} from "@tokenring-ai/agent";
+import type {InputAttachment} from "@tokenring-ai/agent/AgentEvents";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import TokenRingApp from "@tokenring-ai/app";
 import type {CommunicationChannel} from "@tokenring-ai/escalation/EscalationProvider";
+import axios from "axios";
 import TelegramBotAPI from 'node-telegram-bot-api';
 import type {ParsedTelegramBotConfig} from "./schema.ts";
 import TelegramService from "./TelegramService.ts";
@@ -25,6 +27,7 @@ export default class TelegramBot {
   private bot!: TelegramBotAPI;
   private botUsername?: string;
   private groupAgents = new Map<number, Agent>();
+  private dmAgents = new Map<number, Agent>();
   private userChannels = new Map<number, UserChannel>();
   private chatBuffers = new Map<number, ChatBuffer>();
   private lastSendTime = 0;
@@ -48,7 +51,7 @@ export default class TelegramBot {
     this.botUsername = botInfo.username;
     this.app.serviceOutput(this.telegramService, `Bot @${this.botUsername} started`);
 
-    this.bot.on('message', async (msg: any) => {
+    this.bot.on('message', async (msg) => {
       this.app.serviceOutput(this.telegramService, `Raw message received: ${JSON.stringify(msg)}`);
       try {
         await this.handleMessage(msg);
@@ -57,7 +60,7 @@ export default class TelegramBot {
       }
     });
 
-    this.bot.on('polling_error', (error: any) => {
+    this.bot.on('polling_error', (error) => {
       this.app.serviceError(this.telegramService, 'Polling error:', error);
     });
 
@@ -92,6 +95,11 @@ export default class TelegramBot {
       await agentManager.deleteAgent(agent.id, "Telegram bot was shut down.");
     }
     this.groupAgents.clear();
+
+    for (const agent of this.dmAgents.values()) {
+      await agentManager.deleteAgent(agent.id, "Telegram bot was shut down.");
+    }
+    this.dmAgents.clear();
 
     try {
       await this.bot.stopPolling();
@@ -153,18 +161,20 @@ export default class TelegramBot {
     };
   }
 
-  private async handleMessage(msg: any): Promise<void> {
-    const userId = msg.from?.id?.toString();
+  private async handleMessage(msg: TelegramBotAPI.Message): Promise<void> {
+    const userId = msg.from?.id;
     const chatId = msg.chat.id;
-    const text = msg.text || '';
+    const text = msg.text ?? msg.caption;
 
-    if (!userId || !text.trim()) return;
+    if (!userId) return;
 
     this.app.serviceOutput(this.telegramService, `Message from ${userId} in chat ${chatId}: "${text}"`);
 
     // Check if reply to tracked message
     const replyToMessageId = msg.reply_to_message?.message_id;
     if (replyToMessageId) {
+      if (! text) return;
+
       const replyToBotUsername = this.messageIdToBotUsername.get(replyToMessageId);
       if (replyToBotUsername !== this.botUsername) return;
 
@@ -188,8 +198,8 @@ export default class TelegramBot {
     const chatType = msg.chat.type;
     if (chatType === 'group' || chatType === 'supergroup') {
       const mentionString = `@${this.botUsername}`;
-      this.app.serviceOutput(this.telegramService, `Group message, checking if "${text}" starts with "${mentionString}"`);
-      if (!text.trim().startsWith(mentionString)) return;
+      this.app.serviceOutput(this.telegramService, `Group message, checking if text or caption "${text}" contains "${mentionString}"`);
+      if (! text?.trim().includes(mentionString)) return;
 
       const groupConfig = Object.values(this.botConfig.groups).find(g => g.groupId === chatId);
       this.app.serviceOutput(this.telegramService, `Found group config: ${!!groupConfig}`);
@@ -200,17 +210,84 @@ export default class TelegramBot {
         return;
       }
 
-      await this.handleAgentMessage(chatId, `From: ${msg.from.first_name}, Username: (@${msg.from.username}) ${text}`, groupConfig.agentType);
+      const attachments = await this.extractPhotoAttachments(msg);
+
+      await this.handleAgentMessage(
+        chatId,
+        `From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`,
+        attachments,
+        groupConfig.agentType
+      );
+    }
+
+    // Handle private (DM) messages
+    if (chatType === 'private') {
+      if (!text) return;
+
+      if (!this.botConfig.dmAgentType) {
+        await this.bot.sendMessage(chatId, "DMs are not enabled for this bot.");
+        return;
+      }
+
+      if (this.botConfig.dmAllowedUsers && this.botConfig.dmAllowedUsers.length > 0
+        && !this.botConfig.dmAllowedUsers.includes(userId)) {
+        await this.bot.sendMessage(chatId, "Sorry, you are not authorized to DM this bot.");
+        return;
+      }
+
+      const fromUserId = msg.from!.id;
+
+      const attachments = await this.extractPhotoAttachments(msg);
+
+      const agent = await this.getOrCreateAgentForDM(fromUserId, this.botConfig.dmAgentType);
+      this.ensureGroupListener(chatId, agent);
+
+      await agent.waitForState(AgentEventState, (state) => state.idle);
+
+      const requestId = agent.handleInput({
+        message: `/chat send ${text}`,
+        attachments
+      });
+      this.activeRequests.set(requestId, { chatId, responseSent: false });
     }
   }
 
-  private async handleAgentMessage(chatId: number, text: string, agentType: string): Promise<void> {
+  private async extractPhotoAttachments(msg: TelegramBotAPI.Message): Promise<InputAttachment[]> {
+    const attachments: InputAttachment[] = [];
+
+    if (msg.photo && msg.photo.length > 0) {
+      const sortedPhotos = [...msg.photo].sort((a, b) =>
+        (b.width * b.height) - (a.width * a.height)
+      );
+      const bestPhoto = sortedPhotos.find(p => (p.width * p.height) <= this.botConfig.maxPhotoPixels)
+        || sortedPhotos[sortedPhotos.length - 1];
+
+      const fileId = bestPhoto.file_id;
+      const file = await this.bot.getFile(fileId);
+      const { data } = await axios.get(
+        `https://api.telegram.org/file/bot${this.botConfig.botToken}/${file.file_path}`,
+        { responseType: 'arraybuffer' }
+      );
+
+      attachments.push({
+        name: "Image Attachment from Telegram",
+        mimeType: "image/jpeg",
+        body: Buffer.from(data as ArrayBuffer).toString("base64"),
+        encoding: "base64",
+        timestamp: Date.now(),
+      });
+    }
+
+    return attachments;
+  }
+
+  private async handleAgentMessage(chatId: number, text: string, attachments: InputAttachment[], agentType: string): Promise<void> {
     const agent = await this.getOrCreateAgentForGroup(chatId, agentType);
     this.ensureGroupListener(chatId, agent);
 
     await agent.waitForState(AgentEventState, (state) => state.idle);
 
-    const requestId = agent.handleInput({message: `/chat send ${text}`});
+    const requestId = agent.handleInput({message: `/chat send ${text}`, attachments});
     this.activeRequests.set(requestId, { chatId, responseSent: false });
   }
 
@@ -363,7 +440,8 @@ export default class TelegramBot {
             message_id: buffer.messageId
           });
           buffer.lastSentText = textToSend;
-        } catch (editError: any) {
+        } catch (editError) {
+          if (! Error.isError(editError)) throw editError;
           if (!editError.message?.includes("message is not modified")) {
             throw editError;
           }
@@ -385,6 +463,15 @@ export default class TelegramBot {
       this.groupAgents.set(chatId, agent);
     }
     return this.groupAgents.get(chatId)!;
+  }
+
+  private async getOrCreateAgentForDM(userId: number, agentType: string): Promise<Agent> {
+    if (!this.dmAgents.has(userId)) {
+      const agentManager = this.app.requireService(AgentManager);
+      const agent = await agentManager.spawnAgent({agentType, headless: true});
+      this.dmAgents.set(userId, agent);
+    }
+    return this.dmAgents.get(userId)!;
   }
 
   getBotUsername(): string | undefined {

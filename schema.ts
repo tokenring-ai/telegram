@@ -4,11 +4,14 @@ export const TelegramBotConfigSchema = z.object({
   name: z.string(),
   botToken: z.string().min(1, "Bot token is required"),
   joinMessage: z.string().optional(),
+  maxPhotoPixels: z.number().default(1_000_000),
   groups: z.record(z.string(), z.object({
     groupId: z.number().max(0, "Group ID must be a negative number"),
-    allowedUsers: z.array(z.string()).default([]),
+    allowedUsers: z.array(z.number()).default([]),
     agentType: z.string(),
-  }))
+  })),
+  dmAgentType: z.string(),
+  dmAllowedUsers: z.array(z.number()).default([]),
 });
 
 export type ParsedTelegramBotConfig = z.output<typeof TelegramBotConfigSchema>;
