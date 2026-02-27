@@ -1,6 +1,5 @@
 import {Agent, AgentManager} from "@tokenring-ai/agent";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
-import {AgentExecutionState} from "@tokenring-ai/agent/state/agentExecutionState";
 import TokenRingApp from "@tokenring-ai/app";
 import type {CommunicationChannel} from "@tokenring-ai/escalation/EscalationProvider";
 import TelegramBotAPI from 'node-telegram-bot-api';
@@ -209,7 +208,7 @@ export default class TelegramBot {
     const agent = await this.getOrCreateAgentForGroup(chatId, agentType);
     this.ensureGroupListener(chatId, agent);
 
-    await agent.waitForState(AgentExecutionState, (state) => state.idle);
+    await agent.waitForState(AgentEventState, (state) => state.idle);
 
     const requestId = agent.handleInput({message: `/chat send ${text}`});
     this.activeRequests.set(requestId, { chatId, responseSent: false });
