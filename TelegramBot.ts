@@ -6,6 +6,7 @@ import type {CommunicationChannel} from "@tokenring-ai/escalation/EscalationProv
 import axios from "axios";
 import TelegramBotAPI from 'node-telegram-bot-api';
 import type {ParsedTelegramBotConfig} from "./schema.ts";
+import {splitIntoChunks} from "./splitIntoChunks.ts";
 import TelegramService from "./TelegramService.ts";
 
 type UserChannel = {
@@ -16,34 +17,35 @@ type UserChannel = {
   closed: boolean;
 };
 
-type ChatBuffer = {
-  text: string;
-  lastSentText?: string;
-  messageId?: number;
+type ChatResponse = {
+  text: string | null;           // full accumulated text so far
+  // per-chunk state: index = chunk position
+  messageIds: (number | undefined)[];
+  sentTexts: string[];
   isComplete?: boolean;
 };
 
 export default class TelegramBot {
   private bot!: TelegramBotAPI;
   private botUsername?: string;
-  private groupAgents = new Map<number, Agent>();
-  private dmAgents = new Map<number, Agent>();
+  private chatAgents = new Map<number, Promise<Agent>>();
   private userChannels = new Map<number, UserChannel>();
-  private chatBuffers = new Map<number, ChatBuffer>();
+  private chatResponses = new Map<number, ChatResponse>();
   private lastSendTime = 0;
   private sendTimer: NodeJS.Timeout | null = null;
   private pendingChatIds = new Set<number>();
   private isProcessing = false;
   private messageIdToBotUsername = new Map<number, string>();
   private activeRequests = new Map<string, { chatId: number; responseSent: boolean }>();
-  private groupListeners = new Set<number>();
+  private chatListeners = new Set<number>();
 
   constructor(
     private app: TokenRingApp,
     private telegramService: TelegramService,
     private botName: string,
     private botConfig: ParsedTelegramBotConfig
-  ) {}
+  ) {
+  }
 
   async start(): Promise<void> {
     this.bot = new TelegramBotAPI(this.botConfig.botToken, {polling: true});
@@ -67,7 +69,7 @@ export default class TelegramBot {
     if (this.botConfig.joinMessage) {
       for (const groupConfig of Object.values(this.botConfig.groups)) {
         try {
-          await this.bot.sendMessage(groupConfig.groupId, this.botConfig.joinMessage, { parse_mode: 'Markdown' });
+          await this.bot.sendMessage(groupConfig.groupId, this.botConfig.joinMessage, {parse_mode: 'Markdown'});
         } catch (error) {
           this.app.serviceError(this.telegramService, `Failed to announce to group ${groupConfig.groupId}:`, error);
         }
@@ -86,20 +88,16 @@ export default class TelegramBot {
       await this.flushBuffer(chatId);
     }
     this.pendingChatIds.clear();
-    this.chatBuffers.clear();
-    this.groupListeners.clear();
+    this.chatResponses.clear();
+    this.chatListeners.clear();
     this.activeRequests.clear();
 
     const agentManager = this.app.requireService(AgentManager);
-    for (const agent of this.groupAgents.values()) {
+    for (const agentPromise of this.chatAgents.values()) {
+      const agent = await agentPromise;
       await agentManager.deleteAgent(agent.id, "Telegram bot was shut down.");
     }
-    this.groupAgents.clear();
-
-    for (const agent of this.dmAgents.values()) {
-      await agentManager.deleteAgent(agent.id, "Telegram bot was shut down.");
-    }
-    this.dmAgents.clear();
+    this.chatAgents.clear();
 
     try {
       await this.bot.stopPolling();
@@ -116,7 +114,6 @@ export default class TelegramBot {
     return this.createCommunicationChannelWithUser(groupConfig.groupId.toString());
   }
 
-
   createCommunicationChannelWithUser(userId: string): CommunicationChannel {
     const chatId = userId;
     const trackedMessageIds = new Set<number>();
@@ -130,12 +127,12 @@ export default class TelegramBot {
 
     return {
       send: async (message: string) => {
-        const sentMessage = await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        const sentMessage = await this.bot.sendMessage(chatId, message, {parse_mode: 'Markdown'});
         trackedMessageIds.add(sentMessage.message_id);
         this.userChannels.set(sentMessage.message_id, channel);
         this.messageIdToBotUsername.set(sentMessage.message_id, this.botUsername!);
       },
-      receive: async function*(): AsyncGenerator<string> {
+      receive: async function* (): AsyncGenerator<string> {
         while (!channel.closed) {
           if (channel.queue.length > 0) {
             yield channel.queue.shift()!;
@@ -149,7 +146,7 @@ export default class TelegramBot {
       [Symbol.asyncDispose]: async () => {
         channel.closed = true;
         if (channel.resolve) {
-          channel.resolve({ value: undefined, done: true });
+          channel.resolve({value: undefined, done: true});
           channel.resolve = undefined;
         }
         for (const msgId of trackedMessageIds) {
@@ -173,7 +170,7 @@ export default class TelegramBot {
     // Check if reply to tracked message
     const replyToMessageId = msg.reply_to_message?.message_id;
     if (replyToMessageId) {
-      if (! text) return;
+      if (!text) return;
 
       const replyToBotUsername = this.messageIdToBotUsername.get(replyToMessageId);
       if (replyToBotUsername !== this.botUsername) return;
@@ -185,7 +182,7 @@ export default class TelegramBot {
         this.messageIdToBotUsername.set(msg.message_id, this.botUsername!);
 
         if (channel.resolve) {
-          channel.resolve({ value: text, done: false });
+          channel.resolve({value: text, done: false});
           channel.resolve = undefined;
         } else {
           channel.queue.push(text);
@@ -199,7 +196,7 @@ export default class TelegramBot {
     if (chatType === 'group' || chatType === 'supergroup') {
       const mentionString = `@${this.botUsername}`;
       this.app.serviceOutput(this.telegramService, `Group message, checking if text or caption "${text}" contains "${mentionString}"`);
-      if (! text?.trim().includes(mentionString)) return;
+      if (!text?.trim().includes(mentionString)) return;
 
       const groupConfig = Object.values(this.botConfig.groups).find(g => g.groupId === chatId);
       this.app.serviceOutput(this.telegramService, `Found group config: ${!!groupConfig}`);
@@ -210,14 +207,20 @@ export default class TelegramBot {
         return;
       }
 
-      const attachments = await this.extractPhotoAttachments(msg);
+      const attachments = await this.extractAllAttachments(msg);
 
-      await this.handleAgentMessage(
-        chatId,
-        `From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`,
-        attachments,
-        groupConfig.agentType
-      );
+      const agent = await this.ensureAgentForChat(chatId, groupConfig.agentType);
+
+      await agent.waitForState(AgentEventState, (state) => state.idle);
+
+      this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
+
+      const requestId = agent.handleInput({
+        message: `/chat send From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`,
+        attachments
+      });
+      this.activeRequests.set(requestId, {chatId, responseSent: false});
+      await this.flushBuffer(chatId);
     }
 
     // Handle private (DM) messages
@@ -237,24 +240,28 @@ export default class TelegramBot {
 
       const fromUserId = msg.from!.id;
 
-      const attachments = await this.extractPhotoAttachments(msg);
+      const attachments = await this.extractAllAttachments(msg);
 
-      const agent = await this.getOrCreateAgentForDM(fromUserId, this.botConfig.dmAgentType);
-      this.ensureGroupListener(chatId, agent);
+      const agent = await this.ensureAgentForChat(fromUserId, this.botConfig.dmAgentType);
 
       await agent.waitForState(AgentEventState, (state) => state.idle);
 
+      this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
+
       const requestId = agent.handleInput({
-        message: `/chat send ${text}`,
+        message: `/chat send From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`,
         attachments
       });
-      this.activeRequests.set(requestId, { chatId, responseSent: false });
+      this.activeRequests.set(requestId, {chatId, responseSent: false});
+
+      await this.flushBuffer(chatId);
     }
   }
 
-  private async extractPhotoAttachments(msg: TelegramBotAPI.Message): Promise<InputAttachment[]> {
+  private async extractAllAttachments(msg: TelegramBotAPI.Message): Promise<InputAttachment[]> {
     const attachments: InputAttachment[] = [];
 
+    // Handle photos
     if (msg.photo && msg.photo.length > 0) {
       const sortedPhotos = [...msg.photo].sort((a, b) =>
         (b.width * b.height) - (a.width * a.height)
@@ -264,9 +271,9 @@ export default class TelegramBot {
 
       const fileId = bestPhoto.file_id;
       const file = await this.bot.getFile(fileId);
-      const { data } = await axios.get(
+      const {data} = await axios.get(
         `https://api.telegram.org/file/bot${this.botConfig.botToken}/${file.file_path}`,
-        { responseType: 'arraybuffer' }
+        {responseType: 'arraybuffer'}
       );
 
       attachments.push({
@@ -278,93 +285,126 @@ export default class TelegramBot {
       });
     }
 
+    // Handle documents
+    if (msg.document) {
+      const document = msg.document;
+      if (document.mime_type && document.mime_type.startsWith("image/")) {
+        // Skip images which are processed above
+      } else {
+        const document = msg.document;
+        if (document.file_size && document.file_size > this.botConfig.maxDocumentSize) {
+          this.app.serviceOutput(this.telegramService, `Document too large (${document.file_size} bytes), skipping`);
+        } else {
+          const fileId = document.file_id;
+          try {
+            const file = await this.bot.getFile(fileId);
+            const {data} = await axios.get(
+              `https://api.telegram.org/file/bot${this.botConfig.botToken}/${file.file_path}`,
+              {responseType: 'arraybuffer'}
+            );
+
+            attachments.push({
+              name: document.file_name || `document_${fileId}`,
+              mimeType: document.mime_type || "text/plain",
+              body: Buffer.from(data as ArrayBuffer).toString("base64"),
+              encoding: "base64",
+              timestamp: Date.now(),
+            });
+          } catch (error) {
+            this.app.serviceError(this.telegramService, `Failed to fetch document ${fileId}:`, error);
+          }
+        }
+      }
+    }
+
     return attachments;
   }
 
-  private async handleAgentMessage(chatId: number, text: string, attachments: InputAttachment[], agentType: string): Promise<void> {
-    const agent = await this.getOrCreateAgentForGroup(chatId, agentType);
-    this.ensureGroupListener(chatId, agent);
+  private async ensureAgentForChat(chatId: number, agentType: string): Promise<Agent> {
+    if (!this.chatAgents.has(chatId)) {
+      const agentManager = this.app.requireService(AgentManager);
+      const agentPromise = agentManager.spawnAgent({agentType, headless: true});
+      this.chatAgents.set(chatId, agentPromise);
+    }
 
-    await agent.waitForState(AgentEventState, (state) => state.idle);
+    const agent = await this.chatAgents.get(chatId)!;
 
-    const requestId = agent.handleInput({message: `/chat send ${text}`, attachments});
-    this.activeRequests.set(requestId, { chatId, responseSent: false });
+    if (!this.chatListeners.has(chatId)) {
+      this.chatListeners.add(chatId);
+
+      agent.runBackgroundTask((signal) => this.agentEventLoop(chatId, agent, signal));
+    }
+
+    return agent;
   }
 
-  private ensureGroupListener(chatId: number, agent: Agent): void {
-    if (this.groupListeners.has(chatId)) return;
-    this.groupListeners.add(chatId);
-
+  private async agentEventLoop(chatId: number, agent: Agent, signal: AbortSignal): Promise<void> {
     const eventCursor = agent.getState(AgentEventState).getEventCursorFromCurrentPosition();
-    const abortController = new AbortController();
-
-    (async () => {
-      try {
-        for await (const state of agent.subscribeStateAsync(AgentEventState, abortController.signal)) {
-          for (const event of state.yieldEventsByCursor(eventCursor)) {
-            switch (event.type) {
-              case 'output.chat': {
-                // Find any active request for this chatId to mark as responded
-                for (const [, req] of this.activeRequests) {
-                  if (req.chatId === chatId) {
-                    req.responseSent = true;
-                  }
+    try {
+      for await (const state of agent.subscribeStateAsync(AgentEventState, signal)) {
+        for (const event of state.yieldEventsByCursor(eventCursor)) {
+          switch (event.type) {
+            case 'output.chat': {
+              // Find any active request for this chatId to mark as responded
+              for (const [, req] of this.activeRequests) {
+                if (req.chatId === chatId) {
+                  req.responseSent = true;
                 }
-                this.handleChatOutput(chatId, event.message);
-                break;
               }
-              case 'output.info':
-              case 'output.warning':
-              case 'output.error':
-                // Find any active request for this chatId to mark as responded
-                for (const [, req] of this.activeRequests) {
-                  if (req.chatId === chatId) {
-                    req.responseSent = true;
-                  }
+              this.handleChatOutput(chatId, event.message);
+              break;
+            }
+            case 'output.info':
+            case 'output.warning':
+            case 'output.error':
+              // Find any active request for this chatId to mark as responded
+              for (const [, req] of this.activeRequests) {
+                if (req.chatId === chatId) {
+                  req.responseSent = true;
                 }
-                this.handleChatOutput(chatId, `\n[${event.type.split('.')[1].toUpperCase()}]: ${event.message}\n`);
-
-                break;
-              case 'input.handled': {
-                const req = this.activeRequests.get(event.requestId);
-                if (req) {
-                  const buffer = this.chatBuffers.get(req.chatId);
-                  if (buffer) {
-                    buffer.isComplete = true;
-                  }
-                  this.pendingChatIds.add(req.chatId);
-                  this.scheduleSend();
-                  
-                  if (!req.responseSent) {
-                    await this.bot.sendMessage(req.chatId, "No response received from agent.");
-                  }
-                  this.activeRequests.delete(event.requestId);
-                }
-                break;
               }
+              this.handleChatOutput(chatId, `\n[${event.type.split('.')[1].toUpperCase()}]: ${event.message}\n`);
+
+              break;
+            case 'input.handled': {
+              const req = this.activeRequests.get(event.requestId);
+              if (req) {
+                const response = this.chatResponses.get(req.chatId);
+                if (response) {
+                  response.isComplete = true;
+                  // Ensure one final immediate flush for this chat
+                  await this.flushBuffer(req.chatId);
+                }
+
+                if (!req.responseSent) {
+                  await this.bot.sendMessage(req.chatId, "No response received from agent.");
+                }
+                this.activeRequests.delete(event.requestId);
+              }
+              break;
             }
           }
         }
-      } catch (error) {
-        if (error instanceof Error && error.name !== 'AbortError') {
-          this.app.serviceError(this.telegramService, 'Error in group listener:', error);
-        }
       }
-    })();
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        this.app.serviceError(this.telegramService, 'Error in group listener:', error);
+      }
+    } finally {
+      this.chatListeners.delete(chatId);
+    }
   }
 
   private handleChatOutput(chatId: number, content: string): void {
-    let buffer = this.chatBuffers.get(chatId);
-    if (!buffer) {
-      buffer = { text: '' };
-      this.chatBuffers.set(chatId, buffer);
-    }
-    buffer.text += content;
+    let response = this.chatResponses.get(chatId);
+    if (!response) throw new Error(`No response found for chat ${chatId}`);
+
+    if (response.text === null) response.text = '';
+
+    response.text += content;
     this.pendingChatIds.add(chatId);
     this.scheduleSend();
   }
-
-  private readonly MAX_MESSAGE_LENGTH = 4090; // Slightly under 4096 to be safe
 
   private scheduleSend(): void {
     if (this.sendTimer !== null || this.isProcessing) return;
@@ -394,84 +434,41 @@ export default class TelegramBot {
   }
 
   private async flushBuffer(chatId: number): Promise<void> {
-    const buffer = this.chatBuffers.get(chatId);
-    if (!buffer || !buffer.text || buffer.text === buffer.lastSentText) return;
+    const response = this.chatResponses.get(chatId);
+    if (!response) return;
 
-    let textToSend = buffer.text;
+    const chunks = splitIntoChunks(response.text);
 
-    // If the text is too long, we need to split it
-    if (textToSend.length > this.MAX_MESSAGE_LENGTH) {
-      // Send what we have so far (up to the limit)
-      const currentChunk = textToSend.substring(0, this.MAX_MESSAGE_LENGTH);
-      const remaining = textToSend.substring(this.MAX_MESSAGE_LENGTH);
+    // If complete, sync all chunks. Otherwise, sync only the last 2 to save API calls during streaming.
+    const syncFrom = response.isComplete ? 0 : Math.max(0, chunks.length - 2);
+
+    for (let i = syncFrom; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (chunk === response.sentTexts[i]) continue;
 
       try {
-        if (buffer.messageId) {
-          await this.bot.editMessageText(currentChunk, {
+        const existingId = response.messageIds[i];
+        if (existingId) {
+          await this.bot.editMessageText(chunk, {
             chat_id: chatId,
-            message_id: buffer.messageId
+            message_id: existingId,
+            parse_mode: 'Markdown'
           });
         } else {
-          const sent = await this.bot.sendMessage(chatId, currentChunk, { parse_mode: 'Markdown' });
+          const sent = await this.bot.sendMessage(chatId, chunk, {parse_mode: 'Markdown'});
+          response.messageIds[i] = sent.message_id;
           this.messageIdToBotUsername.set(sent.message_id, this.botUsername!);
         }
+        response.sentTexts[i] = chunk;
       } catch (error) {
-        this.app.serviceError(this.telegramService, 'Error flushing partial buffer:', error);
+        if (error instanceof Error && error.message?.includes('message is not modified')) continue;
+        this.app.serviceError(this.telegramService, 'Error flushing buffer:', error);
       }
-
-      // Reset buffer for the remaining text so it starts a fresh message
-      buffer.text = remaining;
-      buffer.messageId = undefined;
-      buffer.lastSentText = '';
-      this.pendingChatIds.add(chatId); // Schedule another send for the remainder
-      return;
     }
 
-    try {
-      if (!buffer.messageId) {
-        const sent = await this.bot.sendMessage(chatId, textToSend, { parse_mode: 'Markdown' });
-        buffer.messageId = sent.message_id;
-        buffer.lastSentText = textToSend;
-        this.messageIdToBotUsername.set(sent.message_id, this.botUsername!);
-      } else {
-        try {
-          await this.bot.editMessageText(textToSend, {
-            chat_id: chatId,
-            message_id: buffer.messageId
-          });
-          buffer.lastSentText = textToSend;
-        } catch (editError) {
-          if (! Error.isError(editError)) throw editError;
-          if (!editError.message?.includes("message is not modified")) {
-            throw editError;
-          }
-        }
-      }
-    } catch (error) {
-      this.app.serviceError(this.telegramService, 'Error flushing buffer:', error);
+    if (response.isComplete) {
+      this.chatResponses.delete(chatId);
     }
-
-    if (buffer.isComplete && buffer.text === buffer.lastSentText) {
-      this.chatBuffers.delete(chatId);
-    }
-  }
-
-  private async getOrCreateAgentForGroup(chatId: number, agentType: string): Promise<Agent> {
-    if (!this.groupAgents.has(chatId)) {
-      const agentManager = this.app.requireService(AgentManager);
-      const agent = await agentManager.spawnAgent({agentType, headless: true});
-      this.groupAgents.set(chatId, agent);
-    }
-    return this.groupAgents.get(chatId)!;
-  }
-
-  private async getOrCreateAgentForDM(userId: number, agentType: string): Promise<Agent> {
-    if (!this.dmAgents.has(userId)) {
-      const agentManager = this.app.requireService(AgentManager);
-      const agent = await agentManager.spawnAgent({agentType, headless: true});
-      this.dmAgents.set(userId, agent);
-    }
-    return this.dmAgents.get(userId)!;
   }
 
   getBotUsername(): string | undefined {

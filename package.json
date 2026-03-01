@@ -10,7 +10,8 @@
     "@tokenring-ai/utility": "0.2.0",
     "@tokenring-ai/escalation": "0.2.0",
     "node-telegram-bot-api": "^0.67.0",
-    "axios": "^1.13.6"
+    "axios": "^1.13.6",
+    "marked": "^17.0.3"
   },
   "devDependencies": {
     "@types/node-telegram-bot-api": "^0.64.13",

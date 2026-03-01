@@ -22,6 +22,7 @@ This package provides a Telegram bot service that integrates with TokenRing agen
 - **Plugin Integration**: Seamless integration with TokenRing plugin system
 - **Message Buffering**: Efficient message buffering with automatic edit/update for long responses
 - **Group Management**: Support for multiple groups per bot with different agent types
+- **File Attachments**: Supports photos, documents, audio, voice, video, video notes, and animations/GIFs
 
 ## Installation
 
@@ -47,6 +48,9 @@ Each bot must include:
 ### Optional Bot Settings
 
 - **`joinMessage`** (string): Message to send when bot starts up to all configured groups
+- **`maxPhotoPixels`** (number): Maximum pixel count for photos (width × height), default 1,000,000
+- **`maxFileSize`** (number): Maximum file size for audio, video, and other files in bytes, default 20MB
+- **`maxDocumentSize`** (number): Maximum file size for documents in bytes, default 10MB
 - **`groups`** (object): Map of group configurations with:
   - **`groupId`** (number, must be negative): Telegram group/chat ID
   - **`allowedUsers`** (string[]): Array of Telegram user IDs allowed to interact (empty = all users allowed)
@@ -63,9 +67,12 @@ export const TelegramBotConfigSchema = z.object({
   name: z.string(),
   botToken: z.string().min(1, "Bot token is required"),
   joinMessage: z.string().optional(),
+  maxPhotoPixels: z.number().default(1_000_000),
+  maxFileSize: z.number().default(20_971_520), // 20MB default
+  maxDocumentSize: z.number().default(10_485_760), // 10MB default
   groups: z.record(z.string(), z.object({
     groupId: z.number().max(0, "Group ID must be a negative number"),
-    allowedUsers: z.array(z.string()).default([]),
+    allowedUsers: z.array(z.number()).default([]),
     agentType: z.string(),
   }))
 });

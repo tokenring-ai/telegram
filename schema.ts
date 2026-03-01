@@ -5,6 +5,8 @@ export const TelegramBotConfigSchema = z.object({
   botToken: z.string().min(1, "Bot token is required"),
   joinMessage: z.string().optional(),
   maxPhotoPixels: z.number().default(1_000_000),
+  maxFileSize: z.number().default(20_971_520), // 20MB default (Telegram's limit for bots)
+  maxDocumentSize: z.number().default(10_485_760), // 10MB default for documents
   groups: z.record(z.string(), z.object({
     groupId: z.number().max(0, "Group ID must be a negative number"),
     allowedUsers: z.array(z.number()).default([]),
