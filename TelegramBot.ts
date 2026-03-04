@@ -36,7 +36,7 @@ export default class TelegramBot {
   private pendingChatIds = new Set<number>();
   private isProcessing = false;
   private messageIdToBotUsername = new Map<number, string>();
-  private activeRequests = new Map<string, { chatId: number; responseSent: boolean }>();
+  private activeRequests = new Map<string, { chatId: number }>();
   private chatListeners = new Set<number>();
 
   constructor(
@@ -210,17 +210,30 @@ export default class TelegramBot {
       const attachments = await this.extractAllAttachments(msg);
 
       const agent = await this.ensureAgentForChat(chatId, groupConfig.agentType);
+      let message: string;
+      const commandMatch = text.match(/^\s*(\/\S+)(.*)/);
+      if (commandMatch) {
+        const command = commandMatch[1];
+        if (Object.hasOwn(this.botConfig.commandMapping, command)) {
+          message = `${this.botConfig.commandMapping[command]}${commandMatch[2]}`;
+        } else if (command === '/stop') {
+          agent.requestAbort("User requested abort from telegram");
+          return;
+        } else {
+          throw new Error(`Command ${command} not found: ${command}`);
+        }
+      } else {
+        message = `/chat send From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`;
+      }
 
       await agent.waitForState(AgentEventState, (state) => state.idle);
 
       this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
 
-      const requestId = agent.handleInput({
-        message: `/chat send From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`,
-        attachments
-      });
-      this.activeRequests.set(requestId, {chatId, responseSent: false});
-      await this.flushBuffer(chatId);
+      await this.processPending();
+
+      const requestId = agent.handleInput({message, attachments});
+      this.activeRequests.set(requestId, {chatId});
     }
 
     // Handle private (DM) messages
@@ -244,17 +257,30 @@ export default class TelegramBot {
 
       const agent = await this.ensureAgentForChat(fromUserId, this.botConfig.dmAgentType);
 
+      let message: string;
+      const commandMatch = text.match(/^\s*(\/\S+)(.*)/);
+      if (commandMatch) {
+        const command = commandMatch[1];
+        if (Object.hasOwn(this.botConfig.commandMapping, command)) {
+          message = `${this.botConfig.commandMapping[command]}${commandMatch[2]}`;
+        } else if (command === '/stop') {
+          agent.requestAbort("User requested abort from telegram");
+          return;
+        } else {
+          throw new Error(`Command ${command} not found: ${command}`);
+        }
+      } else {
+        message = `/chat send From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`;
+      }
+
       await agent.waitForState(AgentEventState, (state) => state.idle);
 
       this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
 
-      const requestId = agent.handleInput({
-        message: `/chat send From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`,
-        attachments
-      });
-      this.activeRequests.set(requestId, {chatId, responseSent: false});
+      await this.processPending();
 
-      await this.flushBuffer(chatId);
+      const requestId = agent.handleInput({message, attachments});
+      this.activeRequests.set(requestId, {chatId});
     }
   }
 
@@ -345,24 +371,12 @@ export default class TelegramBot {
         for (const event of state.yieldEventsByCursor(eventCursor)) {
           switch (event.type) {
             case 'output.chat': {
-              // Find any active request for this chatId to mark as responded
-              for (const [, req] of this.activeRequests) {
-                if (req.chatId === chatId) {
-                  req.responseSent = true;
-                }
-              }
               this.handleChatOutput(chatId, event.message);
               break;
             }
             case 'output.info':
             case 'output.warning':
             case 'output.error':
-              // Find any active request for this chatId to mark as responded
-              for (const [, req] of this.activeRequests) {
-                if (req.chatId === chatId) {
-                  req.responseSent = true;
-                }
-              }
               this.handleChatOutput(chatId, `\n[${event.type.split('.')[1].toUpperCase()}]: ${event.message}\n`);
 
               break;
@@ -372,12 +386,7 @@ export default class TelegramBot {
                 const response = this.chatResponses.get(req.chatId);
                 if (response) {
                   response.isComplete = true;
-                  // Ensure one final immediate flush for this chat
-                  await this.flushBuffer(req.chatId);
-                }
-
-                if (!req.responseSent) {
-                  await this.bot.sendMessage(req.chatId, "No response received from agent.");
+                  this.handleChatOutput(chatId, `\n\n${event.message}`);
                 }
                 this.activeRequests.delete(event.requestId);
               }
@@ -399,15 +408,18 @@ export default class TelegramBot {
     let response = this.chatResponses.get(chatId);
     if (!response) throw new Error(`No response found for chat ${chatId}`);
 
-    if (response.text === null) response.text = '';
+    if (response.text === null) {
+      response.text = content.trimStart();
+    } else {
+      response.text += content;
+    }
 
-    response.text += content;
     this.pendingChatIds.add(chatId);
     this.scheduleSend();
   }
 
   private scheduleSend(): void {
-    if (this.sendTimer !== null || this.isProcessing) return;
+    if (this.sendTimer !== null) return;
     const now = Date.now();
     const delay = Math.max(0, (this.lastSendTime + 250) - now);
     this.sendTimer = setTimeout(() => this.processPending(), delay);
@@ -415,7 +427,8 @@ export default class TelegramBot {
 
   private async processPending(): Promise<void> {
     if (this.isProcessing) return;
-    this.sendTimer = null;
+
+    if (this.sendTimer) clearTimeout(this.sendTimer);
     this.isProcessing = true;
 
     try {
@@ -427,6 +440,7 @@ export default class TelegramBot {
       this.lastSendTime = Date.now();
     } finally {
       this.isProcessing = false;
+      this.sendTimer = null;
       if (this.pendingChatIds.size > 0) {
         this.scheduleSend();
       }
@@ -438,9 +452,14 @@ export default class TelegramBot {
     if (!response) return;
 
     const chunks = splitIntoChunks(response.text);
+    let hadErrors = false;
 
-    // If complete, sync all chunks. Otherwise, sync only the last 2 to save API calls during streaming.
-    const syncFrom = response.isComplete ? 0 : Math.max(0, chunks.length - 2);
+    // While streaming:
+    // - resend previous last sent chunk (it may have shifted/expanded),
+    // - send every newly created chunk after it.
+    const syncFrom = response.isComplete
+      ? 0
+      : Math.max(0, response.sentTexts.length - 1);
 
     for (let i = syncFrom; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -449,19 +468,16 @@ export default class TelegramBot {
       try {
         const existingId = response.messageIds[i];
         if (existingId) {
-          await this.bot.editMessageText(chunk, {
-            chat_id: chatId,
-            message_id: existingId,
-            parse_mode: 'Markdown'
-          });
+          await this.updateMessageWithFallback(chatId, existingId, chunk);
         } else {
-          const sent = await this.bot.sendMessage(chatId, chunk, {parse_mode: 'Markdown'});
+          const sent = await this.sendMessageWithFallback(chatId, chunk);
           response.messageIds[i] = sent.message_id;
           this.messageIdToBotUsername.set(sent.message_id, this.botUsername!);
         }
         response.sentTexts[i] = chunk;
       } catch (error) {
         if (error instanceof Error && error.message?.includes('message is not modified')) continue;
+        hadErrors = true;
         this.app.serviceError(this.telegramService, 'Error flushing buffer:', error);
       }
     }
@@ -469,6 +485,42 @@ export default class TelegramBot {
     if (response.isComplete) {
       this.chatResponses.delete(chatId);
     }
+  }
+
+  private async sendMessageWithFallback(chatId: number, text: string): Promise<TelegramBotAPI.Message> {
+    this.app.serviceOutput(this.telegramService, `Sending text ${text}`);
+    let messageId;
+    try {
+      messageId = await this.bot.sendMessage(chatId, text, {parse_mode: 'Markdown'});
+    } catch (error) {
+      if (!this.isMarkdownParseError(error)) throw error;
+      messageId = await this.bot.sendMessage(chatId, text);
+    }
+    this.app.serviceOutput(this.telegramService, `Text sent, messageId=${messageId}`);
+    return messageId;
+  }
+
+  private async updateMessageWithFallback(chatId: number, messageId: number, text: string): Promise<void> {
+    this.app.serviceOutput(this.telegramService, `Updating ${messageId} with text ${text}`);
+    try {
+      await this.bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'Markdown'
+      });
+    } catch (error) {
+      if (!this.isMarkdownParseError(error)) throw error;
+      await this.bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: messageId
+      });
+    }
+  }
+
+  private isMarkdownParseError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    const msg = error.message?.toLowerCase() ?? '';
+    return msg.includes("can't parse entities") || msg.includes("can't find end");
   }
 
   getBotUsername(): string | undefined {

@@ -1,15 +1,14 @@
-import ridiculousMessages from "@tokenring-ai/utility/string/ridiculousMessages";
-
+import getRandomItem from "@tokenring-ai/utility/string/getRandomItem";
+import workingMessages from "@tokenring-ai/utility/string/workingMessages";
 const MAX = 4090;
 
 export function splitIntoChunks(text: string | null): string[] {
   if (text === null) {
-    let ridiculousMessageOffset = Math.floor(Math.random() * 1000) % ridiculousMessages.length;
-    return [`***${ridiculousMessages[ridiculousMessageOffset]}... ⏳***`];
+    return [`***${getRandomItem(workingMessages)}... ⏳***`];
   }
 
-  // Split on header lines (lines starting with #)
-  const sections = text.split(/(?=\n#)/);
+  // Split on headers and paragraph breaks for more natural boundaries
+  const sections = text.split(/(?=\n#|\n\n)/);
 
   const chunks: string[] = [];
   let current = '';
@@ -17,21 +16,20 @@ export function splitIntoChunks(text: string | null): string[] {
   for (const section of sections) {
     if (current.length + section.length > MAX) {
       if (current) chunks.push(current);
-      current = section;
+      // Force-split oversized individual sections immediately
+      let remaining = section;
+      while (remaining.length > MAX) {
+        const breakPoint = remaining.lastIndexOf('\n', MAX);
+        const splitAt = breakPoint > MAX * 0.5 ? breakPoint : MAX;
+        chunks.push(remaining.substring(0, splitAt));
+        remaining = remaining.substring(splitAt);
+      }
+      current = remaining;
     } else {
       current += section;
     }
   }
   if (current) chunks.push(current);
 
-  // Force-split any chunk that still exceeds MAX
-  return chunks.flatMap(chunk => {
-    const parts: string[] = [];
-    while (chunk.length > MAX) {
-      parts.push(chunk.substring(0, MAX));
-      chunk = chunk.substring(MAX);
-    }
-    if (chunk) parts.push(chunk);
-    return parts;
-  });
+  return chunks;
 }

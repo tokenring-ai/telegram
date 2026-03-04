@@ -14,6 +14,9 @@ export const TelegramBotConfigSchema = z.object({
   })),
   dmAgentType: z.string(),
   dmAllowedUsers: z.array(z.number()).default([]),
+  commandMapping: z.record(z.string(), z.string()).default({
+    "/reset": "/chat reset",
+  })
 });
 
 export type ParsedTelegramBotConfig = z.output<typeof TelegramBotConfigSchema>;
