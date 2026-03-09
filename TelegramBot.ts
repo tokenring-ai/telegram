@@ -3,11 +3,13 @@ import type {InputAttachment} from "@tokenring-ai/agent/AgentEvents";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import TokenRingApp from "@tokenring-ai/app";
 import type {CommunicationChannel} from "@tokenring-ai/escalation/EscalationProvider";
-import axios from "axios";
 import TelegramBotAPI from 'node-telegram-bot-api';
+import {fetchTelegramFile} from "./fetchTelegramFile.ts";
+import {parseCommand} from "./parseCommand.ts";
 import type {ParsedTelegramBotConfig} from "./schema.ts";
 import {splitIntoChunks} from "./splitIntoChunks.ts";
 import TelegramService from "./TelegramService.ts";
+import {ThrottledBatchProcessor} from "./throttledBatchProcessor.ts";
 
 type UserChannel = {
   chatId: string;
@@ -31,13 +33,13 @@ export default class TelegramBot {
   private chatAgents = new Map<number, Promise<Agent>>();
   private userChannels = new Map<number, UserChannel>();
   private chatResponses = new Map<number, ChatResponse>();
-  private lastSendTime = 0;
-  private sendTimer: NodeJS.Timeout | null = null;
-  private pendingChatIds = new Set<number>();
-  private isProcessing = false;
   private messageIdToBotUsername = new Map<number, string>();
   private activeRequests = new Map<string, { chatId: number }>();
   private chatListeners = new Set<number>();
+  private batchProcessor = new ThrottledBatchProcessor<number>(
+    (chatIds) => this.flushAll(chatIds),
+    250
+  );
 
   constructor(
     private app: TokenRingApp,
@@ -78,21 +80,14 @@ export default class TelegramBot {
   }
 
   async stop(): Promise<void> {
-    if (this.sendTimer) {
-      clearTimeout(this.sendTimer);
-      this.sendTimer = null;
-    }
-
-    const chatIds = [...this.pendingChatIds];
-    for (const chatId of chatIds) {
-      await this.flushBuffer(chatId);
-    }
-    this.pendingChatIds.clear();
+    await this.batchProcessor.flush();
+    this.batchProcessor.dispose();
     this.chatResponses.clear();
     this.chatListeners.clear();
     this.activeRequests.clear();
 
     const agentManager = this.app.requireService(AgentManager);
+
     for (const agentPromise of this.chatAgents.values()) {
       const agent = await agentPromise;
       await agentManager.deleteAgent(agent.id, "Telegram bot was shut down.");
@@ -210,27 +205,21 @@ export default class TelegramBot {
       const attachments = await this.extractAllAttachments(msg);
 
       const agent = await this.ensureAgentForChat(chatId, groupConfig.agentType);
-      let message: string;
-      const commandMatch = text.match(/^\s*(\/\S+)(.*)/);
-      if (commandMatch) {
-        const command = commandMatch[1];
-        if (Object.hasOwn(this.botConfig.commandMapping, command)) {
-          message = `${this.botConfig.commandMapping[command]}${commandMatch[2]}`;
-        } else if (command === '/stop') {
-          agent.requestAbort("User requested abort from telegram");
-          return;
-        } else {
-          throw new Error(`Command ${command} not found: ${command}`);
-        }
-      } else {
-        message = `/chat send From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`;
+      const parsed = parseCommand(text, this.botConfig.commandMapping, msg.from);
+      if (parsed.type === 'stop') {
+        agent.requestAbort("User requested abort from telegram");
+        return;
       }
+      if (parsed.type === 'unknown') {
+        throw new Error(`Command ${parsed.command} not found: ${parsed.command}`);
+      }
+      const message = parsed.message;
 
       await agent.waitForState(AgentEventState, (state) => state.idle);
 
       this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
 
-      await this.processPending();
+      await this.batchProcessor.flush();
 
       const requestId = agent.handleInput({message, attachments});
       this.activeRequests.set(requestId, {chatId});
@@ -257,27 +246,21 @@ export default class TelegramBot {
 
       const agent = await this.ensureAgentForChat(fromUserId, this.botConfig.dmAgentType);
 
-      let message: string;
-      const commandMatch = text.match(/^\s*(\/\S+)(.*)/);
-      if (commandMatch) {
-        const command = commandMatch[1];
-        if (Object.hasOwn(this.botConfig.commandMapping, command)) {
-          message = `${this.botConfig.commandMapping[command]}${commandMatch[2]}`;
-        } else if (command === '/stop') {
-          agent.requestAbort("User requested abort from telegram");
-          return;
-        } else {
-          throw new Error(`Command ${command} not found: ${command}`);
-        }
-      } else {
-        message = `/chat send From: ${msg.from?.first_name}, Username: (@${msg.from?.username}) ${text ?? "No text sent"}`;
+      const parsed = parseCommand(text, this.botConfig.commandMapping, msg.from);
+      if (parsed.type === 'stop') {
+        agent.requestAbort("User requested abort from telegram");
+        return;
       }
+      if (parsed.type === 'unknown') {
+        throw new Error(`Command ${parsed.command} not found: ${parsed.command}`);
+      }
+      const message = parsed.message;
 
       await agent.waitForState(AgentEventState, (state) => state.idle);
 
       this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
 
-      await this.processPending();
+      await this.batchProcessor.flush();
 
       const requestId = agent.handleInput({message, attachments});
       this.activeRequests.set(requestId, {chatId});
@@ -295,17 +278,12 @@ export default class TelegramBot {
       const bestPhoto = sortedPhotos.find(p => (p.width * p.height) <= this.botConfig.maxPhotoPixels)
         || sortedPhotos[sortedPhotos.length - 1];
 
-      const fileId = bestPhoto.file_id;
-      const file = await this.bot.getFile(fileId);
-      const {data} = await axios.get(
-        `https://api.telegram.org/file/bot${this.botConfig.botToken}/${file.file_path}`,
-        {responseType: 'arraybuffer'}
-      );
+      const buffer = await fetchTelegramFile(this.bot, this.botConfig.botToken, bestPhoto.file_id);
 
       attachments.push({
         name: "Image Attachment from Telegram",
         mimeType: "image/jpeg",
-        body: Buffer.from(data as ArrayBuffer).toString("base64"),
+        body: buffer.toString("base64"),
         encoding: "base64",
         timestamp: Date.now(),
       });
@@ -317,27 +295,21 @@ export default class TelegramBot {
       if (document.mime_type && document.mime_type.startsWith("image/")) {
         // Skip images which are processed above
       } else {
-        const document = msg.document;
         if (document.file_size && document.file_size > this.botConfig.maxDocumentSize) {
           this.app.serviceOutput(this.telegramService, `Document too large (${document.file_size} bytes), skipping`);
         } else {
-          const fileId = document.file_id;
           try {
-            const file = await this.bot.getFile(fileId);
-            const {data} = await axios.get(
-              `https://api.telegram.org/file/bot${this.botConfig.botToken}/${file.file_path}`,
-              {responseType: 'arraybuffer'}
-            );
+            const buffer = await fetchTelegramFile(this.bot, this.botConfig.botToken, document.file_id);
 
             attachments.push({
-              name: document.file_name || `document_${fileId}`,
+              name: document.file_name || `document_${document.file_id}`,
               mimeType: document.mime_type || "text/plain",
-              body: Buffer.from(data as ArrayBuffer).toString("base64"),
+              body: buffer.toString("base64"),
               encoding: "base64",
               timestamp: Date.now(),
             });
           } catch (error) {
-            this.app.serviceError(this.telegramService, `Failed to fetch document ${fileId}:`, error);
+            this.app.serviceError(this.telegramService, `Failed to fetch document ${document.file_id}:`, error);
           }
         }
       }
@@ -414,36 +386,12 @@ export default class TelegramBot {
       response.text += content;
     }
 
-    this.pendingChatIds.add(chatId);
-    this.scheduleSend();
+    this.batchProcessor.add(chatId);
   }
 
-  private scheduleSend(): void {
-    if (this.sendTimer !== null) return;
-    const now = Date.now();
-    const delay = Math.max(0, (this.lastSendTime + 250) - now);
-    this.sendTimer = setTimeout(() => this.processPending(), delay);
-  }
-
-  private async processPending(): Promise<void> {
-    if (this.isProcessing) return;
-
-    if (this.sendTimer) clearTimeout(this.sendTimer);
-    this.isProcessing = true;
-
-    try {
-      const chatIds = [...this.pendingChatIds];
-      this.pendingChatIds.clear();
-      for (const chatId of chatIds) {
-        await this.flushBuffer(chatId);
-      }
-      this.lastSendTime = Date.now();
-    } finally {
-      this.isProcessing = false;
-      this.sendTimer = null;
-      if (this.pendingChatIds.size > 0) {
-        this.scheduleSend();
-      }
+  private async flushAll(chatIds: number[]): Promise<void> {
+    for (const chatId of chatIds) {
+      await this.flushBuffer(chatId);
     }
   }
 

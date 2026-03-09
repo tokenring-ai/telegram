@@ -24,14 +24,12 @@ This package provides a Telegram bot service that integrates with TokenRing agen
 - **Message Buffering**: Efficient message buffering with automatic edit/update for long responses
 - **Group Management**: Support for multiple groups per bot with different agent types
 - **File Attachments**: Supports photos and documents with size limits
+- **Command Mapping**: Configurable command mapping for custom bot commands
+- **Markdown Support**: Messages are sent with Markdown formatting (with fallback to plain text)
 
 ## Installation
 
 ```bash
-bun install @tokenring-ai/telegram
-# or
-yarn add @tokenring-ai/telegram
-# or
 bun add @tokenring-ai/telegram
 ```
 
@@ -50,7 +48,7 @@ Each bot must include:
 
 - **`joinMessage`** (string): Message to send when bot starts up to all configured groups
 - **`maxPhotoPixels`** (number): Maximum pixel count for photos (width × height), default 1,000,000
-- **`maxFileSize`** (number): Maximum file size for files in bytes, default 20MB (20,971,520)
+- **`maxFileSize`** (number): Maximum file size for files in bytes, default 20MB (20,971,520) - *Note: This property is defined in the schema but currently unused*
 - **`maxDocumentSize`** (number): Maximum file size for documents in bytes, default 10MB (10,485,760)
 - **`groups`** (object): Map of group configurations with:
   - **`groupId`** (number, must be negative): Telegram group/chat ID
@@ -58,17 +56,21 @@ Each bot must include:
   - **`agentType`** (string): Agent type to use for this group
 - **`dmAgentType`** (string): Agent type to use for direct messages (optional, DMs disabled if not provided)
 - **`dmAllowedUsers`** (number[]): Array of Telegram user IDs allowed to use DMs (empty = all users allowed)
+- **`commandMapping`** (Record<string, string>): Map of bot commands to agent commands, default `{"/reset": "/chat reset"}`
 
 ### Plugin Configuration Schema
 
 ```typescript
+import { TelegramBotConfigSchema, TelegramServiceConfigSchema, TelegramEscalationProviderConfigSchema } from '@tokenring-ai/telegram/schema';
+
+// Bot configuration schema
 export const TelegramBotConfigSchema = z.object({
   name: z.string(),
   botToken: z.string().min(1, "Bot token is required"),
   joinMessage: z.string().optional(),
   maxPhotoPixels: z.number().default(1_000_000),
-  maxFileSize: z.number().default(20_971_520), // 20MB default
-  maxDocumentSize: z.number().default(10_485_760), // 10MB default
+  maxFileSize: z.number().default(20_971_520), // 20MB default (Telegram's limit for bots) - Note: Currently unused
+  maxDocumentSize: z.number().default(10_485_760), // 10MB default for documents
   groups: z.record(z.string(), z.object({
     groupId: z.number().max(0, "Group ID must be a negative number"),
     allowedUsers: z.array(z.number()).default([]),
@@ -76,12 +78,17 @@ export const TelegramBotConfigSchema = z.object({
   })),
   dmAgentType: z.string(),
   dmAllowedUsers: z.array(z.number()).default([]),
+  commandMapping: z.record(z.string(), z.string()).default({
+    "/reset": "/chat reset",
+  })
 });
 
+// Service configuration schema
 export const TelegramServiceConfigSchema = z.object({
   bots: z.record(z.string(), TelegramBotConfigSchema)
 });
 
+// Escalation provider configuration schema
 export const TelegramEscalationProviderConfigSchema = z.object({
   type: z.literal('telegram'),
   bot: z.string(),
@@ -111,7 +118,11 @@ export const TelegramEscalationProviderConfigSchema = z.object({
         }
       },
       dmAgentType: "personalAgent",
-      dmAllowedUsers: [123456789]
+      dmAllowedUsers: [123456789],
+      commandMapping: {
+        "/reset": "/chat reset",
+        "/help": "/chat help"
+      }
     },
     "secondaryBot": {
       name: "Secondary Bot",
@@ -148,6 +159,7 @@ app.install(telegramPlugin);
 // TELEGRAM_BOTS_PRIMARYBOT_GROUPS_DEVELOPERS_GROUPID=-1001234567890
 // TELEGRAM_BOTS_PRIMARYBOT_GROUPS_DEVELOPERS_ALLOWEDUSERS=123456789,987654321
 // TELEGRAM_BOTS_PRIMARYBOT_GROUPS_DEVELOPERS_AGENTTYPE=teamLeader
+// TELEGRAM_BOTS_PRIMARYBOT_DMAGENTTYPE=personalAgent
 
 await app.start();
 ```
@@ -272,7 +284,7 @@ When a user replies to a bot-initiated message:
 - **`TelegramBotService`** - The main service class for managing Telegram bots
 - **`TelegramEscalationProvider`** - Escalation provider implementation
 
-> Note: `TelegramBot` and internal classes are not exported from the main entry point.
+> Note: `TelegramBot` and internal classes are not exported from the main entry point. Access them via `telegramService.getBot()`.
 
 ### TelegramBotService Class
 
@@ -556,18 +568,29 @@ Ensure these environment variables are properly set:
 The Telegram service integrates seamlessly with TokenRing's plugin system:
 
 ```typescript
-app.install({
+import {TokenRingPlugin} from "@tokenring-ai/app";
+import {EscalationService} from "@tokenring-ai/escalation";
+import {TelegramEscalationProvider} from '@tokenring-ai/telegram';
+import {TelegramEscalationProviderConfigSchema, TelegramServiceConfigSchema} from "./schema.ts";
+import TelegramService from "./TelegramService.ts";
+
+const packageConfigSchema = z.object({
+  telegram: TelegramServiceConfigSchema.optional(),
+  escalation: EscalationServiceConfigSchema.optional()
+});
+
+export default {
   name: '@tokenring-ai/telegram',
   version: '0.2.0',
   description: 'A TokenRing plugin providing Telegram integration.',
   install(app, config) {
     if (config.telegram) {
-      app.addServices(new TelegramBotService(app, config.telegram));
+      app.addServices(new TelegramService(app, config.telegram));
       if (config.escalation) {
         app.waitForService(EscalationService, escalationService => {
           for (const [providerName, provider] of Object.entries(config.escalation!.providers)) {
             if (provider.type === 'telegram') {
-              escalationService.registerProvider(providerName, new TelegramEscalationProvider(provider));
+              escalationService.registerProvider(providerName, new TelegramEscalationProvider(TelegramEscalationProviderConfigSchema.parse(provider)));
             }
           }
         })
@@ -575,7 +598,7 @@ app.install({
     }
   },
   config: packageConfigSchema
-});
+} satisfies TokenRingPlugin<typeof packageConfigSchema>;
 ```
 
 ### Agent Integration
@@ -595,9 +618,12 @@ pkg/telegram/
 ├── TelegramBot.ts                        # Bot implementation with message handling
 ├── TelegramEscalationProvider.ts         # Escalation provider implementation
 ├── schema.ts                             # Configuration schemas
+├── parseCommand.ts                       # Command parsing utility
+├── fetchTelegramFile.ts                  # File download utility
 ├── splitIntoChunks.ts                    # Message chunking utility
-├── test/                                 # Test files
-└── vitest.config.ts                      # Vitest configuration
+├── throttledBatchProcessor.ts            # Batch processing utility
+├── vitest.config.ts                      # Vitest configuration
+└── README.md                             # This documentation
 ```
 
 ## Dependencies
