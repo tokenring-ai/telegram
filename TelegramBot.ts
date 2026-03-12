@@ -288,6 +288,7 @@ export default class TelegramBot {
       const buffer = await fetchTelegramFile(this.bot, this.botConfig.botToken, bestPhoto.file_id);
 
       attachments.push({
+        type: "attachment",
         name: "Image Attachment from Telegram",
         mimeType: "image/jpeg",
         body: buffer.toString("base64"),
@@ -309,6 +310,7 @@ export default class TelegramBot {
             const buffer = await fetchTelegramFile(this.bot, this.botConfig.botToken, document.file_id);
 
             attachments.push({
+              type: "attachment",
               name: document.file_name || `document_${document.file_id}`,
               mimeType: document.mime_type || "text/plain",
               body: buffer.toString("base64"),
@@ -359,7 +361,7 @@ export default class TelegramBot {
               this.handleChatOutput(chatId, `\n[${event.type.split('.')[1].toUpperCase()}]: ${event.message}\n`);
 
               break;
-            case 'input.handled': {
+            case 'agent.response': {
               const req = this.activeRequests.get(event.requestId);
               if (req) {
                 const response = this.chatResponses.get(req.chatId);
