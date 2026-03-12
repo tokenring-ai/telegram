@@ -207,7 +207,7 @@ export default class TelegramBot {
       const agent = await this.ensureAgentForChat(chatId, groupConfig.agentType);
       const parsed = parseCommand(text, this.botConfig.commandMapping, msg.from);
       if (parsed.type === 'stop') {
-        agent.requestAbort("User requested abort from telegram");
+        agent.abortCurrentOperation("User requested abort from telegram");
         return;
       }
       if (parsed.type === 'unknown') {
@@ -221,7 +221,11 @@ export default class TelegramBot {
 
       await this.batchProcessor.flush();
 
-      const requestId = agent.handleInput({message, attachments});
+      const requestId = agent.handleInput({
+        from: `Telegram message from ${userId}`,
+        message,
+        attachments
+      });
       this.activeRequests.set(requestId, {chatId});
     }
 
@@ -248,7 +252,7 @@ export default class TelegramBot {
 
       const parsed = parseCommand(text, this.botConfig.commandMapping, msg.from);
       if (parsed.type === 'stop') {
-        agent.requestAbort("User requested abort from telegram");
+        agent.abortCurrentOperation("User requested abort from telegram");
         return;
       }
       if (parsed.type === 'unknown') {
@@ -262,7 +266,10 @@ export default class TelegramBot {
 
       await this.batchProcessor.flush();
 
-      const requestId = agent.handleInput({message, attachments});
+      const requestId = agent.handleInput({
+        from: `Telegram message from ${userId}`,
+        message, attachments
+      });
       this.activeRequests.set(requestId, {chatId});
     }
   }
