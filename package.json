@@ -1,6 +1,6 @@
 {
   "name": "@tokenring-ai/telegram",
-  "description": "A Token Ring plugin providing Telegram integration.",
+  "description": "Telegram bot service for TokenRing agents with multi-bot support, group/DM conversations, and escalation provider integration.",
   "version": "0.2.0",
   "dependencies": {
     "@tokenring-ai/app": "0.2.0",

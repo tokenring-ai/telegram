@@ -1,76 +1,160 @@
 # @tokenring-ai/telegram
 
-A TokenRing plugin providing Telegram bot integration for AI-powered agent interactions through Telegram.
+Telegram bot service for TokenRing agents with multi-bot support, group/DM conversations, and escalation provider integration.
 
 ## Overview
 
-This package provides a Telegram bot service that integrates with TokenRing agents, enabling natural language conversations through Telegram. Each Telegram user or group gets their own dedicated agent instance that maintains conversation history and context. The service handles message routing, event processing, and automatic agent management. It supports multiple bots, group-based configurations, and direct messaging.
+The `@tokenring-ai/telegram` package provides a comprehensive Telegram bot service that integrates with TokenRing agents, enabling natural language conversations through Telegram. Each Telegram user or group gets their own dedicated agent instance that maintains conversation history and context. The service handles message routing, event processing, and automatic agent management.
 
-## Features
+As a core integration package, it provides:
 
 - **Multi-Bot Support**: Manage multiple Telegram bots simultaneously with named configurations
-- **Group-Based Configuration**: Configure bots with specific groups for different agents
-- **Direct Messaging (DM) Support**: Optional DM support with per-user agent instances and authorization control
+- **Group-Based Configuration**: Configure bots with specific groups for different agent types
+- **Direct Messaging (DM) Support**: Optional DM support with per-user agent instances
 - **Per-User/Group Agents**: Each Telegram user or group gets a dedicated agent with persistent chat history
 - **Event-Driven Communication**: Handles agent events and sends responses back to Telegram
-- **Direct Messaging with Replies**: Send messages to users and await responses via Telegram reply mechanism
-- **Escalation Provider**: Implements EscalationProvider interface for agent-to-human escalation workflows
-- **Authorization**: User whitelist for restricted access control per group and DM
-- **Automatic Agent Management**: Creates and manages agents for each user/group automatically
-- **Error Handling**: Robust error handling with user-friendly error messages
-- **Timeout Management**: Configurable agent timeout handling
-- **Graceful Shutdown**: Proper cleanup of all user agents on shutdown
-- **Plugin Integration**: Seamless integration with TokenRing plugin system
+- **Escalation Provider**: Implements `EscalationProvider` interface for agent-to-human escalation workflows
 - **Message Buffering**: Efficient message buffering with automatic edit/update for long responses
-- **Group Management**: Support for multiple groups per bot with different agent types
-- **File Attachments**: Supports photos and documents with size limits
+- **File Attachments**: Supports photos and documents with configurable size limits
 - **Command Mapping**: Configurable command mapping for custom bot commands
 - **Markdown Support**: Messages are sent with Markdown formatting (with fallback to plain text)
 
-## Installation
+## Key Features
 
-```bash
-bun add @tokenring-ai/telegram
+- **Multi-Bot Architecture**: Support for multiple independently configured bots
+- **Authorization Control**: User whitelists for both groups and DMs
+- **Reply-Based Communication**: Support for Telegram reply feature in escalation workflows
+- **Intelligent Message Buffering**: 250ms throttled batching with message editing
+- **Automatic Agent Lifecycle**: Creates, manages, and cleans up agents per chat
+- **Graceful Shutdown**: Proper cleanup of all resources on service termination
+- **Error Handling**: Robust error handling with Markdown parse error fallbacks
+- **File Processing**: Photo and document extraction with size validation
+
+## Core Components
+
+### TelegramBotService
+
+The main service class that manages multiple Telegram bot instances.
+
+**Location**: `TelegramService.ts`
+
+**Implements**: `TokenRingService`
+
+**Key Methods**:
+
+- `constructor(app: TokenRingApp, options: ParsedTelegramServiceConfig)`: Initializes the service with app instance and configuration
+- `run(signal: AbortSignal): Promise<void>`: Starts all configured bots and handles lifecycle
+- `getAvailableBots(): string[]`: Returns array of configured bot names
+- `getBot(botName: string): TelegramBot`: Returns the specified bot instance
+
+**Properties**:
+
+- `name: string`: Service identifier ("TelegramService")
+- `description: string`: Service description
+
+### TelegramBot
+
+The bot implementation that handles Telegram API interactions and message processing.
+
+**Location**: `TelegramBot.ts`
+
+**Note**: Not exported from main entry point. Access via `telegramService.getBot()`.
+
+**Key Methods**:
+
+- `constructor(app: TokenRingApp, telegramService: TelegramBotService, botName: string, botConfig: ParsedTelegramBotConfig)`: Initializes bot with configuration
+- `start(): Promise<void>`: Starts the bot and begins polling
+- `stop(): Promise<void>`: Gracefully stops the bot and cleans up resources
+- `createCommunicationChannelWithGroup(groupName: string): CommunicationChannel`: Creates a communication channel for escalation
+- `createCommunicationChannelWithUser(userId: string): CommunicationChannel`: Creates a communication channel for a specific user
+- `getBotUsername(): string | undefined`: Returns the bot's username
+
+**Internal Components**:
+
+- **Message Handling**: Processes incoming messages with authorization checks
+- **Agent Management**: Creates and manages agents per chat ID
+- **Event Processing**: Subscribes to agent events and forwards to Telegram
+- **Response Buffering**: Implements throttled batch processing for efficient messaging
+- **File Extraction**: Handles photo and document attachments
+
+### TelegramEscalationProvider
+
+Implements the `EscalationProvider` interface for escalation workflows.
+
+**Location**: `TelegramEscalationProvider.ts`
+
+**Key Methods**:
+
+- `constructor(config: ParsedTelegramEscalationProviderConfig)`: Initializes with bot and group configuration
+- `createCommunicationChannelWithUser(groupName: string, agent: Agent): Promise<CommunicationChannel>`: Creates a communication channel for escalation
+
+## Services
+
+### TelegramBotService
+
+**Type**: `TokenRingService`
+
+**Purpose**: Manages multiple Telegram bot instances and their lifecycle
+
+**Registration**: Automatically registered when plugin is installed with telegram configuration
+
+**Integration**:
+
+- Integrates with `TokenRingApp` for service management
+- Uses `AgentManager` for agent lifecycle
+- Integrates with `EscalationService` when escalation plugin is configured
+
+## RPC Endpoints
+
+This package does not define RPC endpoints. It uses the Telegram Bot API directly via the `node-telegram-bot-api` library.
+
+## Chat Commands
+
+The package supports configurable command mapping via the `commandMapping` configuration option. Default mapping:
+
+```typescript
+{
+  "/reset": "/chat reset"
+}
+```
+
+**Supported Commands**:
+
+- `/reset` - Resets the agent conversation (maps to `/chat reset`)
+- `/stop` - Special command that aborts the current agent operation
+
+**Custom Commands**: Add custom command mappings in configuration:
+
+```typescript
+commandMapping: {
+  "/reset": "/chat reset",
+  "/help": "/chat help",
+  "/status": "/chat status"
+}
 ```
 
 ## Configuration
 
-The service uses Zod schema validation for configuration. Here are the available options:
+### Configuration Schemas
 
-### Bot Configuration
-
-Each bot must include:
-
-- **`botToken`** (string): Telegram bot token obtained from [@BotFather](https://t.me/botfather)
-- **`name`** (string): Unique name for this bot configuration
-
-### Optional Bot Settings
-
-- **`joinMessage`** (string): Message to send when bot starts up to all configured groups
-- **`maxPhotoPixels`** (number): Maximum pixel count for photos (width × height), default 1,000,000
-- **`maxFileSize`** (number): Maximum file size for files in bytes, default 20MB (20,971,520) - *Note: This property is defined in the schema but currently unused*
-- **`maxDocumentSize`** (number): Maximum file size for documents in bytes, default 10MB (10,485,760)
-- **`groups`** (object): Map of group configurations with:
-  - **`groupId`** (number, must be negative): Telegram group/chat ID
-  - **`allowedUsers`** (number[]): Array of Telegram user IDs allowed to interact (empty = all users allowed)
-  - **`agentType`** (string): Agent type to use for this group
-- **`dmAgentType`** (string): Agent type to use for direct messages (optional, DMs disabled if not provided)
-- **`dmAllowedUsers`** (number[]): Array of Telegram user IDs allowed to use DMs (empty = all users allowed)
-- **`commandMapping`** (Record<string, string>): Map of bot commands to agent commands, default `{"/reset": "/chat reset"}`
-
-### Plugin Configuration Schema
+The package uses Zod schemas for configuration validation:
 
 ```typescript
 import { TelegramBotConfigSchema, TelegramServiceConfigSchema, TelegramEscalationProviderConfigSchema } from '@tokenring-ai/telegram/schema';
+```
 
-// Bot configuration schema
+### TelegramBotConfigSchema
+
+Configuration for individual bot instances:
+
+```typescript
 export const TelegramBotConfigSchema = z.object({
   name: z.string(),
   botToken: z.string().min(1, "Bot token is required"),
   joinMessage: z.string().optional(),
   maxPhotoPixels: z.number().default(1_000_000),
-  maxFileSize: z.number().default(20_971_520), // 20MB default (Telegram's limit for bots) - Note: Currently unused
-  maxDocumentSize: z.number().default(10_485_760), // 10MB default for documents
+  maxFileSize: z.number().default(20_971_520), // 20MB default
+  maxDocumentSize: z.number().default(10_485_760), // 10MB default
   groups: z.record(z.string(), z.object({
     groupId: z.number().max(0, "Group ID must be a negative number"),
     allowedUsers: z.array(z.number()).default([]),
@@ -82,13 +166,39 @@ export const TelegramBotConfigSchema = z.object({
     "/reset": "/chat reset",
   })
 });
+```
 
-// Service configuration schema
+**Properties**:
+
+- **`name`** (string): Unique name for this bot configuration
+- **`botToken`** (string): Telegram bot token from [@BotFather](https://t.me/botfather)
+- **`joinMessage`** (string, optional): Message sent to all groups on bot startup
+- **`maxPhotoPixels`** (number): Maximum pixel count for photos (width × height), default 1,000,000
+- **`maxFileSize`** (number): Maximum file size in bytes, default 20MB (20,971,520)
+- **`maxDocumentSize`** (number): Maximum document size in bytes, default 10MB (10,485,760)
+- **`groups`** (object): Map of group configurations
+  - **`groupId`** (number): Telegram group/chat ID (must be negative)
+  - **`allowedUsers`** (number[]): Array of allowed user IDs (empty = all users)
+  - **`agentType`** (string): Agent type for this group
+- **`dmAgentType`** (string): Agent type for direct messages (DMs disabled if not provided)
+- **`dmAllowedUsers`** (number[]): Array of allowed DM user IDs (empty = all users)
+- **`commandMapping`** (Record<string, string>): Map of bot commands to agent commands
+
+### TelegramServiceConfigSchema
+
+Configuration for the service with multiple bots:
+
+```typescript
 export const TelegramServiceConfigSchema = z.object({
   bots: z.record(z.string(), TelegramBotConfigSchema)
 });
+```
 
-// Escalation provider configuration schema
+### TelegramEscalationProviderConfigSchema
+
+Configuration for escalation provider:
+
+```typescript
 export const TelegramEscalationProviderConfigSchema = z.object({
   type: z.literal('telegram'),
   bot: z.string(),
@@ -96,48 +206,7 @@ export const TelegramEscalationProviderConfigSchema = z.object({
 });
 ```
 
-### Example Configuration
-
-```typescript
-{
-  bots: {
-    "primaryBot": {
-      name: "Primary Bot",
-      botToken: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-      joinMessage: "Bot is online! Type /help for available commands.",
-      groups: {
-        "developers": {
-          groupId: -1001234567890,
-          allowedUsers: [123456789, 987654321],
-          agentType: "developerAgent"
-        },
-        "managers": {
-          groupId: -1009876543210,
-          allowedUsers: [],
-          agentType: "managerAgent"
-        }
-      },
-      dmAgentType: "personalAgent",
-      dmAllowedUsers: [123456789],
-      commandMapping: {
-        "/reset": "/chat reset",
-        "/help": "/chat help"
-      }
-    },
-    "secondaryBot": {
-      name: "Secondary Bot",
-      botToken: "987654:XYZ-ABC5678jkl-Mno987Qrs456def22",
-      groups: {
-        "support": {
-          groupId: -1005555555555,
-          allowedUsers: [],
-          agentType: "supportAgent"
-        }
-      }
-    }
-  }
-}
-```
+## Integration
 
 ### Plugin Installation
 
@@ -148,25 +217,30 @@ import TokenRingApp from '@tokenring-ai/app';
 import telegramPlugin from '@tokenring-ai/telegram';
 
 const app = new TokenRingApp({
-  // Your app configuration
+  telegram: {
+    bots: {
+      "primaryBot": {
+        name: "Primary Bot",
+        botToken: process.env.TELEGRAM_BOT_TOKEN!,
+        groups: {
+          "developers": {
+            groupId: -1001234567890,
+            allowedUsers: [],
+            agentType: "teamLeader"
+          }
+        }
+      }
+    }
+  }
 });
 
-// Install the Telegram plugin
 app.install(telegramPlugin);
-
-// Configure via environment variables or app configuration
-// TELEGRAM_BOTS_PRIMARYBOT_BOTTOKEN=your-bot-token
-// TELEGRAM_BOTS_PRIMARYBOT_GROUPS_DEVELOPERS_GROUPID=-1001234567890
-// TELEGRAM_BOTS_PRIMARYBOT_GROUPS_DEVELOPERS_ALLOWEDUSERS=123456789,987654321
-// TELEGRAM_BOTS_PRIMARYBOT_GROUPS_DEVELOPERS_AGENTTYPE=teamLeader
-// TELEGRAM_BOTS_PRIMARYBOT_DMAGENTTYPE=personalAgent
-
 await app.start();
 ```
 
-### Escalation Provider Configuration
+### Escalation Provider Integration
 
-To use the Telegram escalation provider, configure both the Telegram plugin and escalation plugin:
+To use the Telegram escalation provider, configure both the Telegram and escalation plugins:
 
 ```typescript
 import TokenRingApp from '@tokenring-ai/app';
@@ -203,18 +277,101 @@ const app = new TokenRingApp({
   }
 });
 
-app.install(escalationPlugin);
 app.install(telegramPlugin);
+app.install(escalationPlugin);
+await app.start();
 ```
 
-## Direct Messaging and Escalation
+### Manual Service Registration
 
-The Telegram service supports direct messaging with reply-based responses, enabling synchronous communication between agents and users.
-
-### Communication Channel API
+For advanced usage, services can be registered manually:
 
 ```typescript
-import {TelegramBotService} from '@tokenring-ai/telegram';
+import TokenRingApp from '@tokenring-ai/app';
+import TelegramService from '@tokenring-ai/telegram/TelegramService';
+import { TelegramServiceConfigSchema } from '@tokenring-ai/telegram/schema';
+
+const app = new TokenRingApp();
+
+const config = TelegramServiceConfigSchema.parse({
+  bots: {
+    "primaryBot": {
+      name: "Primary Bot",
+      botToken: process.env.TELEGRAM_BOT_TOKEN!,
+      groups: {
+        "developers": {
+          groupId: -1001234567890,
+          allowedUsers: [],
+          agentType: "teamLeader"
+        }
+      }
+    }
+  }
+});
+
+app.addServices(new TelegramService(app, config));
+await app.start();
+```
+
+## Usage Examples
+
+### Basic Bot Setup
+
+```typescript
+import TokenRingApp from '@tokenring-ai/app';
+import telegramPlugin from '@tokenring-ai/telegram';
+
+const app = new TokenRingApp({
+  telegram: {
+    bots: {
+      "myBot": {
+        name: "My Bot",
+        botToken: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+        groups: {
+          "main": {
+            groupId: -1001234567890,
+            allowedUsers: [],
+            agentType: "developerAgent"
+          }
+        }
+      }
+    }
+  }
+});
+
+app.install(telegramPlugin);
+await app.start();
+```
+
+### Direct Messaging Setup
+
+```typescript
+const app = new TokenRingApp({
+  telegram: {
+    bots: {
+      "myBot": {
+        name: "My Bot",
+        botToken: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+        groups: {
+          "main": {
+            groupId: -1001234567890,
+            allowedUsers: [],
+            agentType: "developerAgent"
+          }
+        },
+        dmAgentType: "personalAgent",
+        dmAllowedUsers: [123456789, 987654321]
+      }
+    }
+  }
+});
+```
+
+### Communication Channel Example
+
+```typescript
+import { TelegramBotService } from '@tokenring-ai/telegram';
+import { EscalationService } from '@tokenring-ai/escalation';
 
 // Get the Telegram service from an agent
 const telegramService = agent.requireServiceByType(TelegramBotService);
@@ -233,22 +390,16 @@ for await (const message of channel.receive()) {
   console.log('User responded:', message);
   break; // Process response and break out of loop
 }
+
+// Clean up
+await channel[Symbol.asyncDispose]();
 ```
 
-### How Reply Handling Works
-
-1. Service sends message to user via Telegram
-2. Message ID is stored with a reply handler
-3. User replies to the message using Telegram's reply feature
-4. Service detects the reply and invokes registered listeners with the response text
-5. Confirmation message (✓ Response received) is sent to user
-
-### Escalation Provider Integration
-
-The Telegram service implements the `EscalationProvider` interface from `@tokenring-ai/escalation`, allowing agents to escalate decisions to human users:
+### Escalation Example
 
 ```typescript
-// In agent code
+import { EscalationService } from '@tokenring-ai/escalation';
+
 const escalationService = agent.requireServiceByType(EscalationService);
 
 // Create a communication channel and send message
@@ -261,7 +412,6 @@ const channel = await escalationService.initiateContactWithUserOrGroup(
 // Listen for response
 for await (const message of channel.receive()) {
   if (message.toLowerCase().includes('yes')) {
-    // Proceed with deployment
     console.log('Deployment approved');
   }
   await channel[Symbol.asyncDispose]();
@@ -269,346 +419,68 @@ for await (const message of channel.receive()) {
 }
 ```
 
-### Reply Security
+## Best Practices
 
-When a user replies to a bot-initiated message:
-- Authorization checks are bypassed (bot initiated the conversation)
-- Reply handlers are automatically cleaned up after response
-- Only replies to tracked messages are processed
+### Security
 
-## API Reference
+1. **Never commit bot tokens**: Use environment variables for bot tokens
+2. **Use user authorization**: Configure `allowedUsers` and `dmAllowedUsers` to restrict access
+3. **Validate group IDs**: Ensure group IDs are negative numbers as required by Telegram
+4. **Handle errors gracefully**: Implement proper error handling for all Telegram API calls
 
-### Exports
+### Performance
 
-- **`default`** - Plugin object for TokenRingApp installation
-- **`TelegramBotService`** - The main service class for managing Telegram bots
-- **`TelegramEscalationProvider`** - Escalation provider implementation
+1. **Configure appropriate limits**: Set `maxPhotoPixels` and `maxDocumentSize` based on your needs
+2. **Use message buffering**: The built-in buffering (250ms) optimizes API calls
+3. **Clean up resources**: Always dispose of communication channels after use
+4. **Monitor agent lifecycle**: The service automatically manages agent lifecycle per chat
 
-> Note: `TelegramBot` and internal classes are not exported from the main entry point. Access them via `telegramService.getBot()`.
+### Message Handling
 
-### TelegramBotService Class
+1. **Use Markdown carefully**: Messages support Markdown with automatic fallback to plain text
+2. **Handle long responses**: The service automatically chunks messages over 4090 characters
+3. **Test reply functionality**: Verify reply-based communication works as expected
+4. **Monitor rate limits**: The service includes built-in rate limiting to avoid Telegram API limits
 
-#### Constructor
+## Testing and Development
 
-```typescript
-constructor(app: TokenRingApp, options: ParsedTelegramServiceConfig)
+### Running Tests
+
+```bash
+# Run all tests
+bun test
+
+# Run tests in watch mode
+bun test --watch
+
+# Run tests with coverage
+bun test --coverage
 ```
 
-- **app**: TokenRingApp instance
-- **options**: Validated configuration object with bots configuration
+### Test Configuration
 
-#### Methods
-
-- **`run(signal: AbortSignal): Promise<void>`**: Starts the Telegram bots and begins polling for messages. Handles the complete service lifecycle including startup, message processing, and graceful shutdown.
-
-#### Properties
-
-- **`name`**: Service identifier ("TelegramService")
-- **`description`**: Service description
-- **`getAvailableBots()`**: Returns array of available bot names
-- **`getBot(botName: string)`**: Returns the specified TelegramBot instance
-
-### TelegramBot Class
-
-> Note: This class is not exported from the main entry point. Access via `telegramService.getBot()`.
-
-#### Constructor
+The package uses Vitest with the following configuration (`vitest.config.ts`):
 
 ```typescript
-constructor(app: TokenRingApp, telegramService: TelegramBotService, botName: string, botConfig: ParsedTelegramBotConfig)
-```
-
-- **app**: TokenRingApp instance
-- **telegramService**: The parent TelegramBotService instance
-- **botName**: Name of this bot configuration
-- **botConfig**: Validated bot configuration
-
-#### Methods
-
-- **`start(): Promise<void>`**: Starts the Telegram bot and begins polling
-- **`stop(): Promise<void>`**: Gracefully stops the bot and cleans up resources
-- **`createCommunicationChannelWithGroup(groupName: string): CommunicationChannel`**: Creates a communication channel for a specific group
-- **`createCommunicationChannelWithUser(userId: string): CommunicationChannel`**: Creates a communication channel for a specific user
-- **`getBotUsername(): string | undefined`**: Returns the bot's username
-
-### TelegramEscalationProvider Class
-
-#### Constructor
-
-```typescript
-constructor(config: ParsedTelegramEscalationProviderConfig)
-```
-
-- **config**: Configuration with `bot` (bot name) and `group` (group name)
-
-#### Methods
-
-- **`createCommunicationChannelWithUser(groupName: string, agent: Agent): Promise<CommunicationChannel>`**: Creates a communication channel for escalation
-
-## Service Lifecycle
-
-1. **Initialization**: Service creates Telegram bot instances
-2. **Message Handler Setup**: Configures message processing with authorization checks
-3. **Reply Handler Setup**: Sets up reply detection for escalation messages
-4. **Polling Start**: Begins Telegram API polling for each bot
-5. **Startup Messages**: Sends "online" messages to configured groups if joinMessage is provided
-6. **Message Processing**: Handles incoming messages with agent creation and event processing
-7. **Graceful Shutdown**: Cleanup of all user agents and bot resources
-
-## Message Processing Flow
-
-### Regular Messages (Group)
-
-1. **Mention Check**: Verifies message contains bot username mention (`@botname`)
-2. **Authorization Check**: Verifies user is authorized for the group (if user whitelist is configured)
-3. **Agent Management**: Gets or creates dedicated agent for the group
-4. **State Wait**: Waits for agent to be idle before processing new input
-5. **Input Handling**: Sends message to agent for processing
-6. **Event Processing**: Subscribes to agent events:
-   - `output.chat`: Sends chat responses to Telegram (with buffering)
-   - `output.info`: Sends system messages with level formatting
-   - `output.warning`: Sends system messages with level formatting
-   - `output.error`: Sends system messages with level formatting
-   - `input.handled`: Cleans up event subscription and handles timeouts
-7. **Response Accumulation**: Accumulates chat content with intelligent buffering
-8. **Timeout Handling**: Implements configurable timeout with user feedback
-
-### Direct Messages (DM)
-
-1. **Authorization Check**: Verifies user is authorized for DM (if user whitelist is configured)
-2. **Agent Management**: Gets or creates dedicated agent for the user
-3. **State Wait**: Waits for agent to be idle before processing new input
-4. **Input Handling**: Sends message to agent for processing
-5. **Event Processing**: Same as group messages
-6. **Response Delivery**: Sends accumulated responses to the user
-
-### Message Buffering
-
-The service implements message buffering to efficiently handle long responses:
-
-- **Maximum Message Length**: 4090 characters (safely under Telegram's 4096 limit)
-- **Edit vs Send**: First message is sent, subsequent content edits the message
-- **Split Long Messages**: If content exceeds limit, sends first chunk and schedules remainder
-- **Rate Limiting**: 250ms delay between sends to avoid rate limiting
-
-### Direct Messages (Escalation)
-
-1. **Message Sent**: Bot sends message to user via `CommunicationChannel.send()`
-2. **Handler Registered**: Message ID is tracked for reply detection
-3. **User Replies**: User uses Telegram reply feature to respond
-4. **Reply Processed**: Registered listeners are invoked with response text
-5. **Confirmation Sent**: User receives "✓ Response received" confirmation
-6. **Cleanup**: Handler removed from registry
-
-## File Attachments
-
-The service supports the following file types:
-
-### Photos
-
-- Extracts the highest quality photo that fits within `maxPhotoPixels`
-- Downloads and converts to base64
-- Sent as image attachment to agent
-
-### Documents
-
-- Downloads and converts to base64
-- Respects `maxDocumentSize` limit (default 10MB)
-- Skips image documents (processed as photos)
-- Preserves original filename and MIME type
-
-### Unsupported Attachments
-
-The following attachment types are currently not supported:
-- Audio
-- Voice messages
-- Video
-- Video notes (video messages)
-- Animations/GIFs
-
-## Getting Started
-
-### 1. Create Telegram Bots
-
-1. Open Telegram and search for [@BotFather](https://t.me/botfather)
-2. Use `/newbot` command to create new bots
-3. Follow the prompts to set up your bots
-4. BotFather will provide you with bot tokens
-
-### 2. Get Group IDs
-
-1. Create Telegram groups for your agents
-2. Add your bot to each group as an admin
-3. Send a message to the group
-4. Visit `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
-5. Find the group ID in the response (negative number)
-
-### 3. Get User IDs (for DM authorization)
-
-1. Send a message to your bot
-2. Visit `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
-3. Find your user ID in the response
-
-### 4. Set Up Configuration
-
-```typescript
-{
-  bots: {
-    "primaryBot": {
-      name: "Primary Bot",
-      botToken: process.env.TELEGRAM_BOT_TOKEN!,
-      joinMessage: "Bot is online!",
-      groups: {
-        "developers": {
-          groupId: -1001234567890,
-          allowedUsers: [123456789, 987654321],
-          agentType: "teamLeader"
-        }
-      },
-      dmAgentType: "personalAgent",
-      dmAllowedUsers: [123456789]
-    }
-  }
-}
-```
-
-## Event Handling
-
-The service handles the following agent events:
-
-- **`output.chat`**: Processes chat content and sends accumulated responses to Telegram
-- **`output.info`**: Formats system messages with level indicators (INFO)
-- **`output.warning`**: Formats system messages with level indicators (WARNING)
-- **`output.error`**: Formats system messages with level indicators (ERROR)
-- **`input.handled`**: Handles input completion, cleans up subscriptions, and manages timeouts
-
-## Error Handling
-
-### Bot-Level Errors
-
-- **Polling Errors**: Logged to console with error details
-- **Message Processing**: Wrapped in try-catch to prevent crashes
-- **Bot Startup**: Validates configuration before initialization
-
-### User-Level Errors
-
-- **Authorization**: Sends "Sorry, you are not authorized to use this bot." for unauthorized users
-- **Timeout**: Sends "Agent timed out after {time} seconds." when agents exceed max runtime
-- **No Response**: Sends "No response received from agent." when no output is generated
-- **Group Not Found**: Throws error when referencing non-existent group configuration
-- **DM Not Enabled**: Sends "DMs are not enabled for this bot." when dmAgentType is not configured
-
-### Service-Level Errors
-
-- **Configuration**: Validates bot token presence on construction
-- **Shutdown**: Graceful cleanup with error handling for bot stop operations
-- **Resource Management**: Proper cleanup of all user agents on service termination
-- **Bot Not Found**: Throws error when referencing non-existent bot configuration
-
-## Security Considerations
-
-- **Bot Token Security**: Never commit bot tokens to version control
-- **User Authorization**: Use `allowedUsers` to restrict bot access to specific users
-- **DM Authorization**: Use `dmAllowedUsers` to restrict DM access to specific users
-- **Input Validation**: All user input is validated and sanitized
-- **Error Information**: Error messages are user-friendly without exposing internal details
-- **Resource Cleanup**: Proper cleanup prevents resource leaks
-- **Group ID Validation**: Ensures group IDs are negative numbers as required by Telegram
-
-## Performance Considerations
-
-- **Multi-Bot Support**: Multiple bots run concurrently with independent polling
-- **Per-Group Agents**: Each group gets their own agent instance for isolation
-- **Per-User Agents**: Each DM user gets their own agent instance for isolation
-- **Event Subscription**: Proper cleanup of event subscriptions prevents memory leaks
-- **Timeout Management**: Configurable timeouts prevent infinite waiting
-- **Message Buffering**: Efficient buffering reduces API calls
-- **Rate Limiting**: Built-in delays prevent Telegram API rate limiting
-- **Graceful Shutdown**: Clean resource cleanup on service termination
-
-## Troubleshooting
-
-### Common Issues
-
-1. **"Bot token is required" error**: Ensure you've provided a valid bot token in configuration
-2. **"Group not found" error**: Verify group name matches configuration exactly
-3. **"Bot not found" error**: Verify bot name matches configuration exactly
-4. **"Not authorized" message**: Add your user ID to `allowedUsers` array or remove the restriction
-5. **Bot not responding**: Check that the service is started and polling is enabled
-6. **Timeout messages**: Adjust `maxRunTime` in agent configuration or increase timeout period
-7. **DMs not working**: Ensure `dmAgentType` is configured in bot settings
-8. **DM unauthorized**: Add your user ID to `dmAllowedUsers` array
-
-### Debug Information
-
-Enable detailed logging to troubleshoot issues:
-
-```typescript
-import { setLogLevel } from '@tokenring-ai/utility';
-
-setLogLevel('debug');
-```
-
-### Environment Variables
-
-Ensure these environment variables are properly set:
-
-- `TELEGRAM_BOTS_PRIMARYBOT_BOTTOKEN`: Bot token from @BotFather
-- `TELEGRAM_BOTS_PRIMARYBOT_JOINMESSAGE`: Optional startup message
-- `TELEGRAM_BOTS_PRIMARYBOT_GROUPS_DEVELOPERS_GROUPID`: Group ID (negative number)
-- `TELEGRAM_BOTS_PRIMARYBOT_GROUPS_DEVELOPERS_ALLOWEDUSERS`: Comma-separated user IDs
-- `TELEGRAM_BOTS_PRIMARYBOT_GROUPS_DEVELOPERS_AGENTTYPE`: Agent type name
-- `TELEGRAM_BOTS_PRIMARYBOT_DMAGENTTYPE`: Agent type for DMs (optional)
-- `TELEGRAM_BOTS_PRIMARYBOT_DMALLOWEDUSERS`: Comma-separated user IDs for DM access (optional)
-
-## Integration with TokenRing
-
-### Plugin System
-
-The Telegram service integrates seamlessly with TokenRing's plugin system:
-
-```typescript
-import {TokenRingPlugin} from "@tokenring-ai/app";
-import {EscalationService} from "@tokenring-ai/escalation";
-import {TelegramEscalationProvider} from '@tokenring-ai/telegram';
-import {TelegramEscalationProviderConfigSchema, TelegramServiceConfigSchema} from "./schema.ts";
-import TelegramService from "./TelegramService.ts";
-
-const packageConfigSchema = z.object({
-  telegram: TelegramServiceConfigSchema.optional(),
-  escalation: EscalationServiceConfigSchema.optional()
-});
-
-export default {
-  name: '@tokenring-ai/telegram',
-  version: '0.2.0',
-  description: 'A TokenRing plugin providing Telegram integration.',
-  install(app, config) {
-    if (config.telegram) {
-      app.addServices(new TelegramService(app, config.telegram));
-      if (config.escalation) {
-        app.waitForService(EscalationService, escalationService => {
-          for (const [providerName, provider] of Object.entries(config.escalation!.providers)) {
-            if (provider.type === 'telegram') {
-              escalationService.registerProvider(providerName, new TelegramEscalationProvider(TelegramEscalationProviderConfigSchema.parse(provider)));
-            }
-          }
-        })
-      }
-    }
+import {defineConfig} from "vitest/config";
+
+export default defineConfig({
+  test: {
+    include: ["**/*.test.ts"],
+    environment: "node",
+    globals: true,
+    isolate: true,
   },
-  config: packageConfigSchema
-} satisfies TokenRingPlugin<typeof packageConfigSchema>;
+});
 ```
 
-### Agent Integration
+### Development Setup
 
-- **Agent Creation**: Creates agents using `agentType` from group configuration or `dmAgentType` for DMs
-- **Event Processing**: Subscribes to agent events for response handling
-- **State Management**: Maintains persistent state across conversations
-- **Resource Management**: Proper cleanup of agent resources
+1. Install dependencies: `bun install`
+2. Run type check: `bun run build`
+3. Run tests: `bun test`
 
-## Package Structure
+### Package Structure
 
 ```
 pkg/telegram/
@@ -626,6 +498,113 @@ pkg/telegram/
 └── README.md                             # This documentation
 ```
 
+## Utility Functions
+
+### parseCommand
+
+**Location**: `parseCommand.ts`
+
+Parses incoming messages and maps commands to agent commands.
+
+```typescript
+type ParsedCommand =
+  | { type: 'mapped'; message: string }
+  | { type: 'stop' }
+  | { type: 'unknown'; command: string }
+  | { type: 'chat'; message: string };
+
+export function parseCommand(
+  text: string | undefined,
+  commandMapping: Record<string, string>,
+  from?: { first_name?: string; username?: string }
+): ParsedCommand
+```
+
+**Parameters**:
+
+- `text`: The message text to parse
+- `commandMapping`: Map of bot commands to agent commands
+- `from`: Optional sender information for chat message formatting
+
+**Returns**: ParsedCommand object with type and message
+
+### fetchTelegramFile
+
+**Location**: `fetchTelegramFile.ts`
+
+Downloads a file from Telegram and returns it as a Buffer.
+
+```typescript
+export async function fetchTelegramFile(
+  bot: TelegramBotAPI,
+  botToken: string,
+  fileId: string
+): Promise<Buffer>
+```
+
+**Parameters**:
+
+- `bot`: TelegramBotAPI instance
+- `botToken`: Bot token for API authentication
+- `fileId`: Telegram file ID to download
+
+**Returns**: Buffer containing the file data
+
+### splitIntoChunks
+
+**Location**: `splitIntoChunks.ts`
+
+Splits text into chunks suitable for Telegram messages (max 4090 characters).
+
+```typescript
+export function splitIntoChunks(text: string | null): string[]
+```
+
+**Parameters**:
+
+- `text`: Text to split into chunks
+
+**Returns**: Array of message chunks
+
+**Features**:
+
+- Splits on headers (`\n#`) and paragraph breaks (`\n\n`)
+- Force-splits oversized sections at line breaks
+- Falls back to character-based splitting if needed
+- Returns "working..." message for null input
+
+### ThrottledBatchProcessor
+
+**Location**: `throttledBatchProcessor.ts`
+
+Batch processor with throttling for efficient message sending.
+
+```typescript
+export class ThrottledBatchProcessor<T> {
+  constructor(
+    processItems: (items: T[]) => Promise<void>,
+    intervalMs: number = 250
+  )
+
+  add(item: T): void
+  flush(): Promise<void>
+  dispose(): void
+  get hasPending(): boolean
+}
+```
+
+**Parameters**:
+
+- `processItems`: Function to process batch of items
+- `intervalMs`: Minimum interval between batches (default 250ms)
+
+**Methods**:
+
+- `add(item)`: Add item to pending batch
+- `flush()`: Process all pending items immediately
+- `dispose()`: Clear pending items and cancel timer
+- `hasPending`: Check if there are pending items
+
 ## Dependencies
 
 ### Production Dependencies
@@ -637,29 +616,21 @@ pkg/telegram/
 - `@tokenring-ai/escalation` (0.2.0) - Escalation provider interface
 - `node-telegram-bot-api` (^0.67.0) - Telegram API binding
 - `axios` (^1.13.6) - HTTP client for file downloads
-- `marked` (^17.0.3) - Markdown parsing
+- `marked` (^17.0.4) - Markdown parsing
 - `zod` (^4.3.6) - Schema validation
 
 ### Development Dependencies
 
 - `@types/node-telegram-bot-api` (^0.64.14) - TypeScript definitions
-- `vitest` (^4.0.18) - Testing framework
+- `vitest` (^4.1.0) - Testing framework
 - `typescript` (^5.9.3) - TypeScript compiler
 
-## Testing
+## Related Components
 
-The package includes comprehensive unit and integration tests:
-
-```bash
-# Run all tests
-bun test
-
-# Run tests in watch mode
-bun test --watch
-
-# Run tests with coverage
-bun test --coverage
-```
+- **@tokenring-ai/agent**: Core agent system used by Telegram bots
+- **@tokenring-ai/escalation**: Escalation service integrated with Telegram provider
+- **@tokenring-ai/app**: Base application framework
+- **@tokenring-ai/chat**: Chat service for agent interactions
 
 ## License
 
