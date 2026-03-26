@@ -3,7 +3,7 @@ import workingMessages from "@tokenring-ai/utility/string/workingMessages";
 const MAX = 4090;
 
 export function splitIntoChunks(text: string | null): string[] {
-  if (text === null) {
+  if (!text) {
     return [`***${getRandomItem(workingMessages)}... ⏳***`];
   }
 

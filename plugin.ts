@@ -1,10 +1,9 @@
 import {TokenRingPlugin} from "@tokenring-ai/app";
 import {EscalationService} from "@tokenring-ai/escalation";
-import GroupEscalationProvider from "@tokenring-ai/escalation/GroupEscalationProvider";
-import {EscalationServiceConfigSchema, GroupEscalationProviderConfigSchema} from "@tokenring-ai/escalation/schema";
+import {EscalationServiceConfigSchema} from "@tokenring-ai/escalation/schema";
 import {z} from "zod";
 import {TelegramEscalationProvider} from "./index.ts";
-import packageJSON from './package.json' with {type: 'json'};
+import packageJSON from "./package.json" with {type: "json"};
 import {TelegramEscalationProviderConfigSchema, TelegramServiceConfigSchema} from "./schema.ts";
 import TelegramService from "./TelegramService.ts";
 

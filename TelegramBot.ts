@@ -217,7 +217,10 @@ export default class TelegramBot {
 
       await agent.waitForState(AgentEventState, (state) => state.idle);
 
-      this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
+      // Only create new response if one doesn't exist for this chat
+      if (!this.chatResponses.has(chatId)) {
+        this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
+      }
 
       await this.batchProcessor.flush();
 
@@ -262,7 +265,10 @@ export default class TelegramBot {
 
       await agent.waitForState(AgentEventState, (state) => state.idle);
 
-      this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
+      // Only create new response if one doesn't exist for this chat
+      if (!this.chatResponses.has(chatId)) {
+        this.chatResponses.set(chatId, {text: null, messageIds: [], sentTexts: []});
+      }
 
       await this.batchProcessor.flush();
 
