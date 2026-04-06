@@ -1,5 +1,9 @@
 import z from "zod";
 
+export const TelegramEscalationBotConfigSchema = z.object({
+  group: z.string(),
+});
+
 export const TelegramBotConfigSchema = z.object({
   name: z.string(),
   botToken: z.string().min(1, "Bot token is required"),
@@ -16,13 +20,14 @@ export const TelegramBotConfigSchema = z.object({
   dmAllowedUsers: z.array(z.number()).default([]),
   commandMapping: z.record(z.string(), z.string()).default({
     "/reset": "/chat reset",
-  })
+  }),
+  escalation: TelegramEscalationBotConfigSchema.optional(),
 });
 
 export type ParsedTelegramBotConfig = z.output<typeof TelegramBotConfigSchema>;
 
 export const TelegramServiceConfigSchema = z.object({
-  bots: z.record(z.string(),TelegramBotConfigSchema)
+  bots: z.record(z.string(), TelegramBotConfigSchema).default({}),
 });
 export type ParsedTelegramServiceConfig = z.output<typeof TelegramServiceConfigSchema>;
 
@@ -34,3 +39,4 @@ export const TelegramEscalationProviderConfigSchema = z.object({
 });
 
 export type ParsedTelegramEscalationProviderConfig = z.output<typeof TelegramEscalationProviderConfigSchema>;
+export type ParsedTelegramEscalationBotConfig = z.output<typeof TelegramEscalationBotConfigSchema>;
