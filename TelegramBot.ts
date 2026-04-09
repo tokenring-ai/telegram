@@ -30,7 +30,7 @@ type ChatResponse = {
 export default class TelegramBot {
   private bot!: TelegramBotAPI;
   private botUsername?: string;
-  private chatAgents = new Map<number, Promise<Agent>>();
+  private chatAgents = new Map<number, Agent>();
   private userChannels = new Map<number, UserChannel>();
   private chatResponses = new Map<number, ChatResponse>();
   private messageIdToBotUsername = new Map<number, string>();
@@ -336,8 +336,8 @@ export default class TelegramBot {
   private async ensureAgentForChat(chatId: number, agentType: string): Promise<Agent> {
     if (!this.chatAgents.has(chatId)) {
       const agentManager = this.app.requireService(AgentManager);
-      const agentPromise = agentManager.spawnAgent({agentType, headless: true});
-      this.chatAgents.set(chatId, agentPromise);
+      const agent = agentManager.spawnAgent({agentType, headless: true});
+      this.chatAgents.set(chatId, agent);
     }
 
     const agent = await this.chatAgents.get(chatId)!;

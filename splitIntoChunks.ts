@@ -1,5 +1,6 @@
 import getRandomItem from "@tokenring-ai/utility/string/getRandomItem";
 import workingMessages from "@tokenring-ai/utility/string/workingMessages";
+
 const MAX = 4090;
 
 export function splitIntoChunks(text: string | null): string[] {
