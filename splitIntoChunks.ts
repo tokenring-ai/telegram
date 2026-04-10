@@ -12,7 +12,7 @@ export function splitIntoChunks(text: string | null): string[] {
   const sections = text.split(/(?=\n#|\n\n)/);
 
   const chunks: string[] = [];
-  let current = '';
+  let current = "";
 
   for (const section of sections) {
     if (current.length + section.length > MAX) {
@@ -20,7 +20,7 @@ export function splitIntoChunks(text: string | null): string[] {
       // Force-split oversized individual sections immediately
       let remaining = section;
       while (remaining.length > MAX) {
-        const breakPoint = remaining.lastIndexOf('\n', MAX);
+        const breakPoint = remaining.lastIndexOf("\n", MAX);
         const splitAt = breakPoint > MAX * 0.5 ? breakPoint : MAX;
         chunks.push(remaining.substring(0, splitAt));
         remaining = remaining.substring(splitAt);

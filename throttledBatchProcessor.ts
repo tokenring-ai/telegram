@@ -8,8 +8,9 @@ export class ThrottledBatchProcessor<T> {
 
   constructor(
     private readonly processItems: (items: T[]) => Promise<void>,
-    private readonly intervalMs: number = 250
-  ) {}
+    private readonly intervalMs: number = 250,
+  ) {
+  }
 
   add(item: T): void {
     this.pending.add(item);
@@ -35,7 +36,7 @@ export class ThrottledBatchProcessor<T> {
   private schedule(): void {
     if (this.timer !== null) return;
     const now = Date.now();
-    const delay = Math.max(0, (this.lastRunTime + this.intervalMs) - now);
+    const delay = Math.max(0, this.lastRunTime + this.intervalMs - now);
     this.timer = setTimeout(() => this.run(), delay);
   }
 
