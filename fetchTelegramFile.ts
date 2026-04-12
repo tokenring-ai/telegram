@@ -1,5 +1,4 @@
 // Extracted utility — e.g., fetchTelegramFile.ts
-import axios from "axios";
 import type TelegramBotAPI from "node-telegram-bot-api";
 
 export async function fetchTelegramFile(
@@ -8,9 +7,12 @@ export async function fetchTelegramFile(
   fileId: string,
 ): Promise<Buffer> {
   const file = await bot.getFile(fileId);
-  const {data} = await axios.get(
+  const response = await fetch(
     `https://api.telegram.org/file/bot${botToken}/${file.file_path}`,
-    {responseType: "arraybuffer"},
   );
-  return Buffer.from(data as ArrayBuffer);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Telegram file: ${response.statusText}`);
+  }
+  const data = await response.arrayBuffer();
+  return Buffer.from(data);
 }

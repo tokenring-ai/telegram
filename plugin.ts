@@ -3,7 +3,7 @@ import {EscalationService} from "@tokenring-ai/escalation";
 import {z} from "zod";
 import {TelegramEscalationProvider} from "./index.ts";
 import packageJSON from "./package.json" with {type: "json"};
-import {type ParsedTelegramBotConfig, TelegramServiceConfigSchema,} from "./schema.ts";
+import {type ParsedTelegramBotConfig, TelegramServiceConfigSchema} from "./schema.ts";
 import TelegramService from "./TelegramService.ts";
 
 const packageConfigSchema = z.object({

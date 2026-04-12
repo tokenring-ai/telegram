@@ -1,5 +1,5 @@
 import {type Agent, AgentManager} from "@tokenring-ai/agent";
-import type {InputAttachment} from "@tokenring-ai/agent/AgentEvents";
+import {type BaseAttachment, BaseAttachmentSchema} from "@tokenring-ai/agent/AgentEvents";
 import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import type TokenRingApp from "@tokenring-ai/app";
 import type {CommunicationChannel} from "@tokenring-ai/escalation/EscalationProvider";
@@ -360,8 +360,8 @@ export default class TelegramBot {
 
   private async extractAllAttachments(
     msg: TelegramBotAPI.Message,
-  ): Promise<InputAttachment[]> {
-    const attachments: InputAttachment[] = [];
+  ): Promise<BaseAttachment[]> {
+    const attachments: BaseAttachment[] = [];
 
     // Handle photos
     if (msg.photo && msg.photo.length > 0) {
@@ -380,12 +380,10 @@ export default class TelegramBot {
       );
 
       attachments.push({
-        type: "attachment",
         name: "Image Attachment from Telegram",
         mimeType: "image/jpeg",
         body: buffer.toString("base64"),
         encoding: "base64",
-        timestamp: Date.now(),
       });
     }
 
@@ -411,13 +409,13 @@ export default class TelegramBot {
               document.file_id,
             );
 
+            const mimeType = BaseAttachmentSchema.shape.mimeType.parse(document.mime_type);
+            
             attachments.push({
-              type: "attachment",
               name: document.file_name || `document_${document.file_id}`,
-              mimeType: document.mime_type || "text/plain",
+              mimeType,
               body: buffer.toString("base64"),
               encoding: "base64",
-              timestamp: Date.now(),
             });
           } catch (error) {
             this.app.serviceError(
