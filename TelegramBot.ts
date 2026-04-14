@@ -66,7 +66,7 @@ export default class TelegramBot {
       );
       try {
         await this.handleMessage(msg);
-      } catch (error) {
+      } catch (error: unknown) {
         this.app.serviceError(
           this.telegramService,
           "Error processing message:",
@@ -87,7 +87,7 @@ export default class TelegramBot {
             this.botConfig.joinMessage,
             {parse_mode: "Markdown"},
           );
-        } catch (error) {
+        } catch (error: unknown) {
           this.app.serviceError(
             this.telegramService,
             `Failed to announce to group ${groupConfig.groupId}:`,
@@ -107,15 +107,14 @@ export default class TelegramBot {
 
     const agentManager = this.app.requireService(AgentManager);
 
-    for (const agentPromise of this.chatAgents.values()) {
-      const agent = await agentPromise;
-      await agentManager.deleteAgent(agent.id, "Telegram bot was shut down.");
+    for (const agent of this.chatAgents.values()) {
+      agentManager.deleteAgent(agent.id, "Telegram bot was shut down.");
     }
     this.chatAgents.clear();
 
     try {
       await this.bot.stopPolling();
-    } catch (error) {
+    } catch (error: unknown) {
       this.app.serviceError(
         this.telegramService,
         "Error stopping polling:",
@@ -249,7 +248,7 @@ export default class TelegramBot {
 
       const attachments = await this.extractAllAttachments(msg);
 
-      const agent = await this.ensureAgentForChat(
+      const agent = this.ensureAgentForChat(
         chatId,
         groupConfig.agentType,
       );
@@ -315,7 +314,7 @@ export default class TelegramBot {
 
       const attachments = await this.extractAllAttachments(msg);
 
-      const agent = await this.ensureAgentForChat(
+      const agent = this.ensureAgentForChat(
         fromUserId,
         this.botConfig.dmAgentType,
       );
@@ -417,7 +416,7 @@ export default class TelegramBot {
               body: buffer.toString("base64"),
               encoding: "base64",
             });
-          } catch (error) {
+          } catch (error: unknown) {
             this.app.serviceError(
               this.telegramService,
               `Failed to fetch document ${document.file_id}:`,
@@ -497,7 +496,7 @@ export default class TelegramBot {
           }
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof Error && error.name !== "AbortError") {
         this.app.serviceError(
           this.telegramService,
@@ -556,7 +555,7 @@ export default class TelegramBot {
           this.messageIdToBotUsername.set(sent.message_id, this.botUsername);
         }
         response.sentTexts[i] = chunk;
-      } catch (error) {
+      } catch (error: unknown) {
         if (
           error instanceof Error &&
           error.message?.includes("message is not modified")
@@ -586,13 +585,13 @@ export default class TelegramBot {
       message = await this.bot.sendMessage(chatId, text, {
         parse_mode: "Markdown",
       });
-    } catch (error) {
+    } catch (error: unknown) {
       if (!this.isMarkdownParseError(error)) throw error;
       message = await this.bot.sendMessage(chatId, text);
     }
     this.app.serviceOutput(
       this.telegramService,
-      `Text sent, messageId=${message}`,
+      `Text sent, messageId=${message.message_id}`,
     );
     return message;
   }
@@ -612,7 +611,7 @@ export default class TelegramBot {
         message_id: messageId,
         parse_mode: "Markdown",
       });
-    } catch (error) {
+    } catch (error: unknown) {
       if (!this.isMarkdownParseError(error)) throw error;
       await this.bot.editMessageText(text, {
         chat_id: chatId,
