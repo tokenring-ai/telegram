@@ -12,8 +12,8 @@ export default class TelegramService implements TokenRingService {
 
   private bots = new KeyedRegistry<TelegramBot>();
 
-  getAvailableBots = this.bots.getAllItemNames;
-  getBot = this.bots.getItemByName;
+  getAvailableBots = this.bots.keysArray;
+  getBot = this.bots.get;
 
   constructor(
     private app: TokenRingApp,
@@ -28,11 +28,11 @@ export default class TelegramService implements TokenRingService {
       const bot = new TelegramBot(this.app, this, botName, botConfig);
       await bot.start();
 
-      this.bots.register(botName, bot);
+      this.bots.set(botName, bot);
     }
 
     return waitForAbort(signal, async () => {
-      for (const [botName, bot] of this.bots.entries()) {
+      for (const [botName, bot] of this.bots.entriesArray()) {
         await bot.stop();
         this.bots.unregister(botName);
       }
