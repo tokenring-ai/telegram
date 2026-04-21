@@ -1,14 +1,10 @@
 // Extracted utility — e.g., parseCommand.ts
-type ParsedCommand =
-  | { type: "mapped"; message: string }
-  | { type: "stop" }
-  | { type: "unknown"; command: string }
-  | { type: "chat"; message: string };
+type ParsedCommand = { type: "mapped"; message: string } | { type: "stop" } | { type: "unknown"; command: string } | { type: "chat"; message: string };
 
 export function parseCommand(
   text: string | undefined,
   commandMapping: Record<string, string>,
-  from?: { first_name?: string; username?: string },
+  from?: { first_name?: string | undefined; username?: string | undefined } | undefined,
 ): ParsedCommand {
   const commandMatch = text?.match(/^\s*(\/\S+)(.*)/);
   if (commandMatch) {
@@ -20,9 +16,9 @@ export function parseCommand(
       };
     }
     if (command === "/stop") {
-      return {type: "stop"};
+      return { type: "stop" };
     }
-    return {type: "unknown", command};
+    return { type: "unknown", command };
   }
   return {
     type: "chat",

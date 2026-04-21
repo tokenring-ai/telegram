@@ -9,8 +9,7 @@ export class ThrottledBatchProcessor<T> {
   constructor(
     private readonly processItems: (items: T[]) => Promise<void>,
     private readonly intervalMs: number = 250,
-  ) {
-  }
+  ) {}
 
   add(item: T): void {
     this.pending.add(item);

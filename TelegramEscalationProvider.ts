@@ -1,16 +1,12 @@
-import type {Agent} from "@tokenring-ai/agent";
-import type {CommunicationChannel, EscalationProvider} from "@tokenring-ai/escalation/EscalationProvider";
-import type {ParsedTelegramEscalationProviderConfig} from "./schema.ts";
+import type { Agent } from "@tokenring-ai/agent";
+import type { CommunicationChannel, EscalationProvider } from "@tokenring-ai/escalation/EscalationProvider";
+import type { ParsedTelegramEscalationProviderConfig } from "./schema.ts";
 import TelegramService from "./TelegramService.ts";
 
 export default class TelegramEscalationProvider implements EscalationProvider {
-  constructor(readonly config: ParsedTelegramEscalationProviderConfig) {
-  }
+  constructor(readonly config: ParsedTelegramEscalationProviderConfig) {}
 
-  createCommunicationChannelWithUser(
-    groupName: string,
-    agent: Agent,
-  ): CommunicationChannel {
+  createCommunicationChannelWithUser(groupName: string, agent: Agent): CommunicationChannel {
     const telegramService = agent.requireServiceByType(TelegramService);
 
     const bot = telegramService.getBot(this.config.bot);

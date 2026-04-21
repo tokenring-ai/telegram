@@ -7,7 +7,7 @@ export const TelegramEscalationBotConfigSchema = z.object({
 export const TelegramBotConfigSchema = z.object({
   name: z.string(),
   botToken: z.string().min(1, "Bot token is required"),
-  joinMessage: z.string().optional(),
+  joinMessage: z.string().exactOptional(),
   maxPhotoPixels: z.number().default(1_000_000),
   maxFileSize: z.number().default(20_971_520), // 20MB default (Telegram's limit for bots)
   maxDocumentSize: z.number().default(10_485_760), // 10MB default for documents
@@ -24,7 +24,7 @@ export const TelegramBotConfigSchema = z.object({
   commandMapping: z.record(z.string(), z.string()).default({
     "/reset": "/chat reset",
   }),
-  escalation: TelegramEscalationBotConfigSchema.optional(),
+  escalation: TelegramEscalationBotConfigSchema.exactOptional(),
 });
 
 export type ParsedTelegramBotConfig = z.output<typeof TelegramBotConfigSchema>;
@@ -32,9 +32,7 @@ export type ParsedTelegramBotConfig = z.output<typeof TelegramBotConfigSchema>;
 export const TelegramServiceConfigSchema = z.object({
   bots: z.record(z.string(), TelegramBotConfigSchema).default({}),
 });
-export type ParsedTelegramServiceConfig = z.output<
-  typeof TelegramServiceConfigSchema
->;
+export type ParsedTelegramServiceConfig = z.output<typeof TelegramServiceConfigSchema>;
 
 export const TelegramEscalationProviderConfigSchema = z.object({
   type: z.literal("telegram"),
@@ -42,9 +40,5 @@ export const TelegramEscalationProviderConfigSchema = z.object({
   group: z.string(),
 });
 
-export type ParsedTelegramEscalationProviderConfig = z.output<
-  typeof TelegramEscalationProviderConfigSchema
->;
-export type ParsedTelegramEscalationBotConfig = z.output<
-  typeof TelegramEscalationBotConfigSchema
->;
+export type ParsedTelegramEscalationProviderConfig = z.output<typeof TelegramEscalationProviderConfigSchema>;
+export type ParsedTelegramEscalationBotConfig = z.output<typeof TelegramEscalationBotConfigSchema>;
