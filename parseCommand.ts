@@ -4,7 +4,7 @@ type ParsedCommand = { type: "mapped"; message: string } | { type: "stop" } | { 
 export function parseCommand(
   text: string | undefined,
   commandMapping: Record<string, string>,
-  from?: { first_name?: string | undefined; username?: string | undefined } | undefined,
+  from?: { first_name?: string | undefined; username?: string | undefined }  ,
 ): ParsedCommand {
   const commandMatch = text?.match(/^\s*(\/\S+)(.*)/);
   if (commandMatch) {
