@@ -1,10 +1,14 @@
 # @tokenring-ai/telegram
 
-Telegram bot service for TokenRing agents with multi-bot support, group/DM conversations, and escalation provider integration.
+Telegram bot service for TokenRing agents with multi-bot support, group/DM conversations, and escalation provider
+integration.
 
 ## Overview
 
-The `@tokenring-ai/telegram` package provides a comprehensive Telegram bot service that integrates with TokenRing agents, enabling natural language conversations through Telegram. Each Telegram user or group gets their own dedicated agent instance that maintains conversation history and context. The service handles message routing, event processing, and automatic agent management.
+The `@tokenring-ai/telegram` package provides a comprehensive Telegram bot service that integrates with TokenRing
+agents, enabling natural language conversations through Telegram. Each Telegram user or group gets their own dedicated
+agent instance that maintains conversation history and context. The service handles message routing, event processing,
+and automatic agent management.
 
 As a core integration package, it provides:
 
@@ -62,7 +66,8 @@ The main service class that manages multiple Telegram bot instances.
 
 **Key Methods**:
 
-- `constructor(app: TokenRingApp, options: ParsedTelegramServiceConfig)`: Initializes the service with app instance and configuration
+- `constructor(app: TokenRingApp, options: ParsedTelegramServiceConfig)`: Initializes the service with app instance and
+  configuration
 - `run(signal: AbortSignal): Promise<void>`: Starts all configured bots and handles lifecycle
 - `getAvailableBots(): string[]`: Returns array of configured bot names
 - `getBot(botName: string): TelegramBot`: Returns the specified bot instance
@@ -82,11 +87,17 @@ The bot implementation that handles Telegram API interactions and message proces
 
 **Key Methods**:
 
-- `constructor(app: TokenRingApp, telegramService: TelegramService, botName: string, botConfig: ParsedTelegramBotConfig)`: Initializes bot with configuration
+-
+
+`constructor(app: TokenRingApp, telegramService: TelegramService, botName: string, botConfig: ParsedTelegramBotConfig)`:
+Initializes bot with configuration
+
 - `start(): Promise<void>`: Starts the bot and begins polling
 - `stop(): Promise<void>`: Gracefully stops the bot and cleans up resources
-- `createCommunicationChannelWithGroup(groupName: string): CommunicationChannel`: Creates a communication channel for escalation
-- `createCommunicationChannelWithUser(userId: string): CommunicationChannel`: Creates a communication channel for a specific user
+- `createCommunicationChannelWithGroup(groupName: string): CommunicationChannel`: Creates a communication channel for
+  escalation
+- `createCommunicationChannelWithUser(userId: string): CommunicationChannel`: Creates a communication channel for a
+  specific user
 - `getBotUsername(): string | undefined`: Returns the bot's username
 
 **Internal Components**:
@@ -106,7 +117,8 @@ Implements the `EscalationProvider` interface for escalation workflows.
 **Key Methods**:
 
 - `constructor(config: ParsedTelegramEscalationProviderConfig)`: Initializes with bot and group configuration
-- `createCommunicationChannelWithUser(groupName: string, agent: Agent): Promise<CommunicationChannel>`: Creates a communication channel for escalation
+- `createCommunicationChannelWithUser(groupName: string, agent: Agent): Promise<CommunicationChannel>`: Creates a
+  communication channel for escalation
 
 ## Services
 
@@ -126,7 +138,8 @@ Implements the `EscalationProvider` interface for escalation workflows.
 
 ## Provider Documentation
 
-The package includes a `TelegramEscalationProvider` that implements the `EscalationProvider` interface for agent-to-human escalation workflows.
+The package includes a `TelegramEscalationProvider` that implements the `EscalationProvider` interface for
+agent-to-human escalation workflows.
 
 ### Provider Interface
 
@@ -134,7 +147,7 @@ The package includes a `TelegramEscalationProvider` that implements the `Escalat
 interface TelegramEscalationProvider {
   config: ParsedTelegramEscalationProviderConfig;
   createCommunicationChannelWithUser(
-    groupName: string, 
+    groupName: string,
     agent: Agent
   ): Promise<CommunicationChannel>;
 }
@@ -142,7 +155,8 @@ interface TelegramEscalationProvider {
 
 ### Provider Registration
 
-When using the plugin, escalation providers are automatically registered when both `telegram` and `escalation` configurations are present:
+When using the plugin, escalation providers are automatically registered when both `telegram` and `escalation`
+configurations are present:
 
 ```typescript
 import telegramPlugin from '@tokenring-ai/telegram';
@@ -181,7 +195,8 @@ app.install(escalationPlugin);
 
 ## RPC Endpoints
 
-This package does not define RPC endpoints. It uses the Telegram Bot API directly via the `node-telegram-bot-api` library.
+This package does not define RPC endpoints. It uses the Telegram Bot API directly via the `node-telegram-bot-api`
+library.
 
 ## Chat Commands
 
@@ -189,7 +204,9 @@ The package supports configurable command mapping via the `commandMapping` confi
 
 ```typescript
 {
-  "/reset": "/chat reset"
+  "/reset"
+:
+  "/chat reset"
 }
 ```
 
@@ -202,9 +219,15 @@ The package supports configurable command mapping via the `commandMapping` confi
 
 ```typescript
 commandMapping: {
-  "/reset": "/chat reset",
-  "/help": "/chat help",
-  "/status": "/chat status"
+  "/reset"
+:
+  "/chat reset",
+    "/help"
+:
+  "/chat help",
+    "/status"
+:
+  "/chat status"
 }
 ```
 
@@ -215,10 +238,10 @@ commandMapping: {
 The package uses Zod schemas for configuration validation:
 
 ```typescript
-import { 
-  TelegramBotConfigSchema, 
-  TelegramServiceConfigSchema, 
-  TelegramEscalationProviderConfigSchema 
+import {
+  TelegramBotConfigSchema,
+  TelegramServiceConfigSchema,
+  TelegramEscalationProviderConfigSchema
 } from '@tokenring-ai/telegram/schema.ts';
 ```
 
@@ -256,9 +279,9 @@ export const TelegramBotConfigSchema = z.object({
 - **`maxFileSize`** (number): Maximum file size in bytes, default 20MB (20,971,520)
 - **`maxDocumentSize`** (number): Maximum document size in bytes, default 10MB (10,485,760)
 - **`groups`** (object): Map of group configurations
-  - **`groupId`** (number): Telegram group/chat ID (must be negative)
-  - **`allowedUsers`** (number[]): Array of allowed user IDs (empty = all users)
-  - **`agentType`** (string): Agent type for this group
+- **`groupId`** (number): Telegram group/chat ID (must be negative)
+- **`allowedUsers`** (number[]): Array of allowed user IDs (empty = all users)
+- **`agentType`** (string): Agent type for this group
 - **`dmAgentType`** (string): Agent type for direct messages (DMs disabled if not provided)
 - **`dmAllowedUsers`** (number[]): Array of allowed DM user IDs (empty = all users)
 - **`commandMapping`** (Record<string, string>): Map of bot commands to agent commands
@@ -666,8 +689,11 @@ export class ThrottledBatchProcessor<T> {
   )
 
   add(item: T): void
+
   flush(): Promise<void>
+
   dispose(): void
+
   get hasPending(): boolean
 }
 ```

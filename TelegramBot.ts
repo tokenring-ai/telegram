@@ -151,6 +151,10 @@ export default class TelegramBot {
     };
   }
 
+  getBotUsername(): string | undefined {
+    return this.botUsername;
+  }
+
   private async handleMessage(msg: TelegramBotAPI.Message): Promise<void> {
     const userId = msg.from?.id;
     const chatId = msg.chat.id;
@@ -486,9 +490,5 @@ export default class TelegramBot {
     if (!(error instanceof Error)) return false;
     const msg = error.message?.toLowerCase() ?? "";
     return msg.includes("can't parse entities") || msg.includes("can't find end");
-  }
-
-  getBotUsername(): string | undefined {
-    return this.botUsername;
   }
 }

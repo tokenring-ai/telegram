@@ -11,6 +11,10 @@ export class ThrottledBatchProcessor<T> {
     private readonly intervalMs: number = 250,
   ) {}
 
+  get hasPending(): boolean {
+    return this.pending.size > 0;
+  }
+
   add(item: T): void {
     this.pending.add(item);
     this.schedule();
@@ -26,10 +30,6 @@ export class ThrottledBatchProcessor<T> {
       this.timer = null;
     }
     this.pending.clear();
-  }
-
-  get hasPending(): boolean {
-    return this.pending.size > 0;
   }
 
   private schedule(): void {
