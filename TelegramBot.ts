@@ -389,7 +389,7 @@ export default class TelegramBot {
         }
       }
     } catch (error: unknown) {
-      if (error instanceof Error && error.name !== "AbortError") {
+      if (Error.isError(error) && error.name !== "AbortError") {
         this.app.serviceError(this.telegramService, "Error in group listener:", error);
       }
     } finally {
@@ -442,7 +442,7 @@ export default class TelegramBot {
         }
         response.sentTexts[i] = chunk;
       } catch (error: unknown) {
-        if (error instanceof Error && error.message?.includes("message is not modified")) {
+        if (Error.isError(error) && error.message?.includes("message is not modified")) {
           continue;
         }
         this.app.serviceError(this.telegramService, "Error flushing buffer:", error);
@@ -487,7 +487,7 @@ export default class TelegramBot {
   }
 
   private isMarkdownParseError(error: unknown): boolean {
-    if (!(error instanceof Error)) return false;
+    if (!(Error.isError(error))) return false;
     const msg = error.message?.toLowerCase() ?? "";
     return msg.includes("can't parse entities") || msg.includes("can't find end");
   }
