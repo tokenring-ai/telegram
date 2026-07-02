@@ -4,14 +4,14 @@
   "version": "0.2.0",
   "dependencies": {
     "@tokenring-ai/app": "workspace:*",
-    "zod": "^4.3.6",
+    "zod": "^4.4.3",
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",
     "@tokenring-ai/escalation": "workspace:*",
-    "node-telegram-bot-api": "^0.67.0"
+    "node-telegram-bot-api": "^1.1.2"
   },
   "devDependencies": {
-    "@types/node-telegram-bot-api": "^0.64.14",
+    "@types/node-telegram-bot-api": "^0.64.15",
     "vitest": "^4.1.1",
     "typescript": "^6.0.2"
   },

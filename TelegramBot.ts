@@ -4,6 +4,7 @@ import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
 import type TokenRingApp from "@tokenring-ai/app";
 import type { CommunicationChannel } from "@tokenring-ai/escalation/EscalationProvider";
 import TelegramBotAPI from "node-telegram-bot-api";
+import type { Message } from "node-telegram-bot-api";
 import { fetchTelegramFile } from "./fetchTelegramFile.ts";
 import { parseCommand } from "./parseCommand.ts";
 import type { ParsedTelegramBotConfig } from "./schema.ts";
@@ -43,7 +44,8 @@ export default class TelegramBot {
     private telegramService: TelegramService,
     private botName: string,
     private botConfig: ParsedTelegramBotConfig,
-  ) {}
+  ) {
+  }
 
   async start(): Promise<void> {
     this.bot = new TelegramBotAPI(this.botConfig.botToken, { polling: true });
@@ -155,7 +157,7 @@ export default class TelegramBot {
     return this.botUsername;
   }
 
-  private async handleMessage(msg: TelegramBotAPI.Message): Promise<void> {
+  private async handleMessage(msg: Message): Promise<void> {
     const userId = msg.from?.id;
     const chatId = msg.chat.id;
     const text = msg.text ?? msg.caption;
@@ -291,7 +293,7 @@ export default class TelegramBot {
     }
   }
 
-  private async extractAllAttachments(msg: TelegramBotAPI.Message): Promise<BaseAttachment[]> {
+  private async extractAllAttachments(msg: Message): Promise<BaseAttachment[]> {
     const attachments: BaseAttachment[] = [];
 
     // Handle photos
@@ -454,9 +456,9 @@ export default class TelegramBot {
     }
   }
 
-  private async sendMessageWithFallback(chatId: number, text: string): Promise<TelegramBotAPI.Message> {
+  private async sendMessageWithFallback(chatId: number, text: string): Promise<Message> {
     this.app.serviceOutput(this.telegramService, `Sending text ${text}`);
-    let message: TelegramBotAPI.Message;
+    let message: Message;
     try {
       message = await this.bot.sendMessage(chatId, text, {
         parse_mode: "Markdown",
