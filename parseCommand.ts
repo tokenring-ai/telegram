@@ -8,7 +8,7 @@ export function parseCommand(
 ): ParsedCommand {
   const commandMatch = text?.match(/^\s*(\/\S+)(.*)/);
   if (commandMatch) {
-    const command = commandMatch[1];
+    const command = commandMatch[1]!;
     if (Object.hasOwn(commandMapping, command)) {
       return {
         type: "mapped",

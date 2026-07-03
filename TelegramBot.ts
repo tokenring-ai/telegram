@@ -44,8 +44,7 @@ export default class TelegramBot {
     private telegramService: TelegramService,
     private botName: string,
     private botConfig: ParsedTelegramBotConfig,
-  ) {
-  }
+  ) {}
 
   async start(): Promise<void> {
     this.bot = new TelegramBotAPI(this.botConfig.botToken, { polling: true });
@@ -299,7 +298,7 @@ export default class TelegramBot {
     // Handle photos
     if (msg.photo && msg.photo.length > 0) {
       const sortedPhotos = [...msg.photo].sort((a, b) => b.width * b.height - a.width * a.height);
-      const bestPhoto = sortedPhotos.find(p => p.width * p.height <= this.botConfig.maxPhotoPixels) || sortedPhotos[sortedPhotos.length - 1];
+      const bestPhoto = sortedPhotos.find(p => p.width * p.height <= this.botConfig.maxPhotoPixels) || sortedPhotos[sortedPhotos.length - 1]!;
 
       const buffer = await fetchTelegramFile(this.bot, this.botConfig.botToken, bestPhoto.file_id);
 
@@ -372,8 +371,7 @@ export default class TelegramBot {
             case "output.info":
             case "output.warning":
             case "output.error":
-              this.handleChatOutput(chatId, `\n[${event.type.split(".")[1].toUpperCase()}]: ${event.message}\n`);
-
+              this.handleChatOutput(chatId, `\n[${event.type.split(".")[1]!.toUpperCase()}]: ${event.message}\n`);
               break;
             case "agent.response": {
               const req = this.activeRequests.get(event.requestId);
@@ -430,7 +428,7 @@ export default class TelegramBot {
     const syncFrom = response.isComplete ? 0 : Math.max(0, response.sentTexts.length - 1);
 
     for (let i = syncFrom; i < chunks.length; i++) {
-      const chunk = chunks[i];
+      const chunk = chunks[i]!;
       if (chunk === response.sentTexts[i]) continue;
 
       try {
@@ -489,7 +487,7 @@ export default class TelegramBot {
   }
 
   private isMarkdownParseError(error: unknown): boolean {
-    if (!(Error.isError(error))) return false;
+    if (!Error.isError(error)) return false;
     const msg = error.message?.toLowerCase() ?? "";
     return msg.includes("can't parse entities") || msg.includes("can't find end");
   }
