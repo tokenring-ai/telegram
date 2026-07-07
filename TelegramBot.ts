@@ -3,8 +3,8 @@ import { type BaseAttachment, BaseAttachmentSchema } from "@tokenring-ai/agent/A
 import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
 import type TokenRingApp from "@tokenring-ai/app";
 import type { CommunicationChannel } from "@tokenring-ai/escalation/EscalationProvider";
-import TelegramBotAPI from "node-telegram-bot-api";
 import type { Message } from "node-telegram-bot-api";
+import TelegramBotAPI from "node-telegram-bot-api";
 import { fetchTelegramFile } from "./fetchTelegramFile.ts";
 import { parseCommand } from "./parseCommand.ts";
 import type { ParsedTelegramBotConfig } from "./schema.ts";
@@ -249,7 +249,7 @@ export default class TelegramBot {
         return;
       }
 
-      if (this.botConfig.dmAllowedUsers && this.botConfig.dmAllowedUsers.length > 0 && !this.botConfig.dmAllowedUsers.includes(userId)) {
+      if (this.botConfig.dmAllowedUsers.length > 0 && !this.botConfig.dmAllowedUsers.includes(userId)) {
         await this.bot.sendMessage(chatId, "Sorry, you are not authorized to DM this bot.");
         return;
       }
@@ -442,7 +442,7 @@ export default class TelegramBot {
         }
         response.sentTexts[i] = chunk;
       } catch (error: unknown) {
-        if (Error.isError(error) && error.message?.includes("message is not modified")) {
+        if (Error.isError(error) && error.message.includes("message is not modified")) {
           continue;
         }
         this.app.serviceError(this.telegramService, "Error flushing buffer:", error);
@@ -488,7 +488,7 @@ export default class TelegramBot {
 
   private isMarkdownParseError(error: unknown): boolean {
     if (!Error.isError(error)) return false;
-    const msg = error.message?.toLowerCase() ?? "";
+    const msg = error.message.toLowerCase();
     return msg.includes("can't parse entities") || msg.includes("can't find end");
   }
 }
