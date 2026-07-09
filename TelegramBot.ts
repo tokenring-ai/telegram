@@ -1,5 +1,5 @@
 import { type Agent, AgentManager } from "@tokenring-ai/agent";
-import { type BaseAttachment, BaseAttachmentSchema } from "@tokenring-ai/agent/AgentEvents";
+import { type BaseAttachment, InputAttachmentSchema } from "@tokenring-ai/agent/AgentEvents";
 import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
 import type TokenRingApp from "@tokenring-ai/app";
 import type { CommunicationChannel } from "@tokenring-ai/escalation/EscalationProvider";
@@ -322,7 +322,7 @@ export default class TelegramBot {
           try {
             const buffer = await fetchTelegramFile(this.bot, this.botConfig.botToken, document.file_id);
 
-            const mimeType = BaseAttachmentSchema.shape.mimeType.parse(document.mime_type);
+            const mimeType = InputAttachmentSchema.shape.mimeType.parse(document.mime_type);
 
             attachments.push({
               name: document.file_name || `document_${document.file_id}`,
