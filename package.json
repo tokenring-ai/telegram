@@ -12,7 +12,6 @@
   },
   "devDependencies": {
     "@types/node-telegram-bot-api": "^0.64.15",
-    "vitest": "^4.1.1",
     "typescript": "^6.0.2"
   },
   "exports": {
@@ -23,9 +22,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "vitest run",
+    "test": "bun test",
     "build": "tsc --noEmit",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage"
   }
 }
