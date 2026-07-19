@@ -6,7 +6,7 @@ export const TelegramEscalationBotConfigSchema = z.object({
 
 export const TelegramBotConfigSchema = z.object({
   name: z.string(),
-  botToken: z.string().min(1, "Bot token is required"),
+  botToken: z.string().min(1, "Bot token is required").meta({ sensitive: true, description: "Telegram bot token" }),
   joinMessage: z.string().exactOptional(),
   maxPhotoPixels: z.number().default(1_000_000),
   maxFileSize: z.number().default(20_971_520), // 20MB default (Telegram's limit for bots)
