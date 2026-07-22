@@ -561,10 +561,9 @@ bun test --coverage
 
 ### Test Configuration
 
-The package uses Vitest with the following configuration (`vitest.config.ts`):
 
 ```typescript
-import {defineConfig} from "vitest/config";
+import {defineConfig} from "bun:test";
 
 export default defineConfig({
   test: {
@@ -596,7 +595,6 @@ pkg/telegram/
 ├── fetchTelegramFile.ts                  # File download utility
 ├── splitIntoChunks.ts                    # Message chunking utility
 ├── throttledBatchProcessor.ts            # Batch processing utility
-├── vitest.config.ts                      # Vitest configuration
 └── README.md                             # This documentation
 ```
 
@@ -727,7 +725,7 @@ export class ThrottledBatchProcessor<T> {
 ### Development Dependencies
 
 - `@types/node-telegram-bot-api` (^0.64.14) - TypeScript definitions
-- `vitest` (^4.1.1) - Testing framework
+- `bun test` - Testing framework
 - `typescript` (^6.0.2) - TypeScript compiler
 
 ## Related Components
