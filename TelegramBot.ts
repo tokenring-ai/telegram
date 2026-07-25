@@ -8,7 +8,7 @@ import type { Message } from "node-telegram-bot-api";
 import TelegramBotAPI from "node-telegram-bot-api";
 import { fetchTelegramFile } from "./fetchTelegramFile.ts";
 import { parseCommand } from "./parseCommand.ts";
-import type { ParsedTelegramBotConfig } from "./schema.ts";
+import type { ResolvedTelegramBotConfig } from "./schema.ts";
 import { splitIntoChunks } from "./splitIntoChunks.ts";
 import type TelegramService from "./TelegramService.ts";
 import { ThrottledBatchProcessor } from "./throttledBatchProcessor.ts";
@@ -44,7 +44,7 @@ export default class TelegramBot {
     private app: TokenRingApp,
     private telegramService: TelegramService,
     private botName: string,
-    private botConfig: ParsedTelegramBotConfig,
+    private botConfig: ResolvedTelegramBotConfig,
   ) {}
 
   async start(): Promise<void> {

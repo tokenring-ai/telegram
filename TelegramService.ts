@@ -2,7 +2,7 @@ import type TokenRingApp from "@tokenring-ai/app";
 import type { TokenRingService } from "@tokenring-ai/app/types";
 import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
 import KeyedRegistry from "@tokenring-ai/utility/registry/KeyedRegistry";
-import type { ParsedTelegramServiceConfig } from "./schema.ts";
+import type { ResolvedTelegramServiceConfig } from "./schema.ts";
 import TelegramBot from "./TelegramBot.ts";
 
 export default class TelegramService implements TokenRingService {
@@ -16,7 +16,7 @@ export default class TelegramService implements TokenRingService {
 
   constructor(
     private app: TokenRingApp,
-    private options: ParsedTelegramServiceConfig,
+    private options: ResolvedTelegramServiceConfig,
   ) {}
 
   async run(signal: AbortSignal): Promise<void> {

@@ -8,7 +8,8 @@
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",
     "@tokenring-ai/escalation": "workspace:*",
-    "node-telegram-bot-api": "^1.2.0"
+    "node-telegram-bot-api": "^1.2.0",
+    "@tokenring-ai/secrets": "workspace:*"
   },
   "devDependencies": {
     "@types/node-telegram-bot-api": "^0.64.15",

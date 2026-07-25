@@ -1,3 +1,4 @@
+import { secret, type WithResolvedSecrets } from "@tokenring-ai/secrets/secret";
 import z from "zod";
 
 export const TelegramEscalationBotConfigSchema = z.object({
@@ -6,7 +7,7 @@ export const TelegramEscalationBotConfigSchema = z.object({
 
 export const TelegramBotConfigSchema = z.object({
   name: z.string(),
-  botToken: z.string().min(1, "Bot token is required").meta({ sensitive: true, description: "Telegram bot token" }),
+  botToken: secret({ description: "Telegram bot token" }),
   joinMessage: z.string().exactOptional(),
   maxPhotoPixels: z.number().default(1_000_000),
   maxFileSize: z.number().default(20_971_520), // 20MB default (Telegram's limit for bots)
@@ -29,10 +30,16 @@ export const TelegramBotConfigSchema = z.object({
 
 export type ParsedTelegramBotConfig = z.output<typeof TelegramBotConfigSchema>;
 
+/** A bot as handed to the service, with its token secret already resolved. */
+export type ResolvedTelegramBotConfig = WithResolvedSecrets<ParsedTelegramBotConfig, "botToken">;
+
 export const TelegramServiceConfigSchema = z.object({
   bots: z.record(z.string(), TelegramBotConfigSchema).default({}),
 });
 export type ParsedTelegramServiceConfig = z.output<typeof TelegramServiceConfigSchema>;
+
+/** Service config with every bot's secrets resolved. */
+export type ResolvedTelegramServiceConfig = { bots: Record<string, ResolvedTelegramBotConfig> };
 
 export const TelegramEscalationProviderConfigSchema = z.object({
   type: z.literal("telegram"),
