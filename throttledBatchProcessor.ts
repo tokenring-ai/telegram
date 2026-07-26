@@ -1,7 +1,9 @@
 // packages/telegram/src/ThrottledBatchProcessor.ts
 
+import EnhancedSet from "@tokenring-ai/utility/set/enhancedSet";
+
 export class ThrottledBatchProcessor<T> {
-  private pending = new Set<T>();
+  private pending = new EnhancedSet<T>();
   private lastRunTime = 0;
   private timer: NodeJS.Timeout | null = null;
   private isProcessing = false;
@@ -48,7 +50,7 @@ export class ThrottledBatchProcessor<T> {
     this.isProcessing = true;
 
     try {
-      const items = [...this.pending];
+      const items = this.pending.valuesArray();
       this.pending.clear();
       await this.processItems(items);
       this.lastRunTime = Date.now();
