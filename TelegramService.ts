@@ -1,18 +1,24 @@
 import type TokenRingApp from "@tokenring-ai/app";
 import type { TokenRingService } from "@tokenring-ai/app/types";
+import { BotService } from "@tokenring-ai/bot";
 import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
 import KeyedRegistry from "@tokenring-ai/utility/registry/KeyedRegistry";
 import type { ResolvedTelegramServiceConfig } from "./schema.ts";
-import TelegramBot from "./TelegramBot.ts";
+import TelegramMessagingProvider from "./TelegramMessagingProvider.ts";
 
+/**
+ * Connects the configured Telegram accounts and registers each one with the
+ * bot service, where it becomes the `telegram`-style prefix of a
+ * `service:userId` target.
+ */
 export default class TelegramService implements TokenRingService {
   readonly name = "TelegramService";
-  description = "Manages multiple Telegram bots for interacting with TokenRing agents.";
+  description = "Connects Telegram bot accounts to the bot service.";
 
-  private bots = new KeyedRegistry<TelegramBot>();
+  private providers = new KeyedRegistry<TelegramMessagingProvider>();
 
-  getAvailableBots = this.bots.keysArray;
-  getBot = this.bots.get;
+  getAvailableAccounts = this.providers.keysArray;
+  getProvider = this.providers.get;
 
   constructor(
     private app: TokenRingApp,
@@ -20,19 +26,23 @@ export default class TelegramService implements TokenRingService {
   ) {}
 
   async run(signal: AbortSignal): Promise<void> {
-    this.app.serviceOutput(this, "Starting Telegram bots...");
+    const botService = this.app.requireService(BotService);
 
-    for (const [botName, botConfig] of Object.entries(this.options.bots)) {
-      const bot = new TelegramBot(this.app, this, botName, botConfig);
-      await bot.start();
+    this.app.serviceOutput(this, "Connecting Telegram accounts...");
 
-      this.bots.set(botName, bot);
+    for (const [accountName, accountConfig] of Object.entries(this.options.accounts)) {
+      const provider = new TelegramMessagingProvider(this.app, this, accountName, accountConfig);
+      await provider.start();
+
+      this.providers.set(accountName, provider);
+      botService.registerProvider(accountName, provider);
     }
 
     return waitForAbort(signal, async () => {
-      for (const [botName, bot] of this.bots.entriesArray()) {
-        await bot.stop();
-        this.bots.unregister(botName);
+      for (const [accountName, provider] of this.providers.entriesArray()) {
+        botService.unregisterProvider(accountName);
+        await provider.stop();
+        this.providers.unregister(accountName);
       }
     });
   }

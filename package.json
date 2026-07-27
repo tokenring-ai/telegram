@@ -1,13 +1,13 @@
 {
   "name": "@tokenring-ai/telegram",
-  "description": "Bot integration for interacting with agents through Telegram.",
+  "description": "Telegram transport for TokenRing bots.",
   "version": "0.2.0",
   "dependencies": {
     "@tokenring-ai/app": "workspace:*",
     "zod": "^4.4.3",
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",
-    "@tokenring-ai/escalation": "workspace:*",
+    "@tokenring-ai/bot": "workspace:*",
     "node-telegram-bot-api": "^1.2.0",
     "@tokenring-ai/secrets": "workspace:*"
   },
