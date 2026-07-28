@@ -14,20 +14,20 @@ export default {
   displayName: "Telegram Integration",
   version: packageJSON.version,
   description: packageJSON.description,
-  install(app, config) {
-    const accounts = Object.entries(config.telegram.accounts);
-    if (accounts.length === 0) return;
-
-    // Resolve up front so a misconfigured token fails at boot, not on first message.
+  install(app) {
+    app.addServices(new TelegramService(app));
+  },
+  async reconfigure(app, config) {
+    // Resolve up front so a misconfigured token fails at configure, not on first message.
     const resolvedAccounts: Record<string, ResolvedTelegramAccountConfig> = {};
-    for (const [accountName, account] of accounts) {
+    for (const [accountName, account] of Object.entries(config.telegram.accounts)) {
       resolvedAccounts[accountName] = {
         ...account,
         botToken: requireSecret(app, account.botToken, `Telegram account "${accountName}" bot token`),
       };
     }
 
-    app.addServices(new TelegramService(app, { accounts: resolvedAccounts }));
+    await app.requireService(TelegramService).reconfigure({ accounts: resolvedAccounts });
   },
   configSchema: packageConfigSchema,
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;
