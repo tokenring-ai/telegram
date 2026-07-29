@@ -1,6 +1,8 @@
+import { AgentCommandService } from "@tokenring-ai/agent";
 import type { TokenRingPlugin } from "@tokenring-ai/app";
 import { requireSecret } from "@tokenring-ai/secrets/SecretService";
 import { z } from "zod";
+import agentCommands from "./commands.ts";
 import packageJSON from "./package.json" with { type: "json" };
 import { type ResolvedTelegramAccountConfig, TelegramServiceConfigSchema } from "./schema.ts";
 import TelegramService from "./TelegramService.ts";
@@ -16,6 +18,9 @@ export default {
   description: packageJSON.description,
   install(app) {
     app.addServices(new TelegramService(app));
+    app.waitForService(AgentCommandService, commandService => {
+      commandService.addAgentCommands(agentCommands);
+    });
   },
   async reconfigure(app, config) {
     // Resolve up front so a misconfigured token fails at configure, not on first message.

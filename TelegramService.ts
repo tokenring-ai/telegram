@@ -1,8 +1,8 @@
 import type TokenRingApp from "@tokenring-ai/app";
-import type { TokenRingService } from "@tokenring-ai/app/types";
+import { ConfigurationError, type TokenRingService } from "@tokenring-ai/app/types";
 import { BotService } from "@tokenring-ai/bot";
-import { deepEqual } from "@tokenring-ai/one-frontend/src/lib/utils";
 import KeyedRegistry from "@tokenring-ai/utility/registry/KeyedRegistry";
+import { deepEquals } from "bun";
 import type { ResolvedTelegramServiceConfig } from "./schema.ts";
 import TelegramMessagingProvider from "./TelegramMessagingProvider.ts";
 
@@ -24,12 +24,14 @@ export default class TelegramService implements TokenRingService {
   constructor(private app: TokenRingApp) {}
 
   async reconfigure(options: ResolvedTelegramServiceConfig) {
-    const botService = this.app.requireService(BotService);
+    const botService = this.requireBotService();
 
-    await this.providers.reconcileAgainstAsync(this.options.accounts, {
+    // Reconcile the live providers against the *incoming* accounts; `this.options`
+    // is the previous snapshot, used below only to spot which ones actually changed.
+    await this.providers.reconcileAgainstAsync(options.accounts, {
       creating: async (accountName, accountConfig) => {
+        this.app.serviceOutput(this, `Connecting Telegram account ${accountName}`);
         const provider = new TelegramMessagingProvider(this.app, this, accountName, accountConfig);
-        this.app.serviceOutput(this, `Creating Telegram account ${accountName}`);
         await provider.start();
         botService.registerProvider(accountName, provider);
         return provider;
@@ -40,15 +42,15 @@ export default class TelegramService implements TokenRingService {
         await provider.stop();
       },
       updating: async (accountName, provider, accountConfig) => {
-        if (deepEqual(this.options.accounts[accountName], accountConfig)) return provider;
+        if (deepEquals(this.options.accounts[accountName], accountConfig, true)) return provider;
 
         // Token/config changes require a reconnect.
+        this.app.serviceOutput(this, `Reconnecting Telegram account ${accountName}`);
         botService.unregisterProvider(accountName);
         await provider.stop();
         const next = new TelegramMessagingProvider(this.app, this, accountName, accountConfig);
         await next.start();
         botService.registerProvider(accountName, next);
-        this.providers.set(accountName, next);
         return next;
       },
     });
@@ -56,11 +58,22 @@ export default class TelegramService implements TokenRingService {
   }
 
   async stop(): Promise<void> {
-    const botService = this.app.requireService(BotService);
+    const botService = this.app.getService(BotService);
     for (const [accountName, provider] of this.providers.entriesArray()) {
-      botService.unregisterProvider(accountName);
+      botService?.unregisterProvider(accountName);
       await provider.stop();
       this.providers.unregister(accountName);
     }
+  }
+
+  private requireBotService(): BotService {
+    const botService = this.app.getService(BotService);
+    if (!botService) {
+      throw new ConfigurationError(
+        this.name,
+        "Telegram accounts are configured but the @tokenring-ai/bot plugin is not installed, so there is nothing to connect them to",
+      );
+    }
+    return botService;
   }
 }

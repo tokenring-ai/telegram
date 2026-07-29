@@ -13,6 +13,13 @@ export const TelegramAccountConfigSchema = z.object({
     .number()
     .default(1_000_000)
     .meta({ advanced: true, description: "Largest photo, in pixels, fetched from Telegram" } satisfies ConfigFieldMeta),
+  maxFileSize: z
+    .number()
+    .default(20_971_520)
+    .meta({
+      advanced: true,
+      description: "Largest file, in bytes, fetched from Telegram. Telegram itself refuses to serve a bot more than 20MB",
+    } satisfies ConfigFieldMeta),
   maxDocumentSize: z
     .number()
     .default(10_485_760)
