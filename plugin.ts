@@ -17,7 +17,7 @@ export default {
   version: packageJSON.version,
   description: packageJSON.description,
   install(app) {
-    app.addServices(new TelegramService(app));
+    app.addService(new TelegramService(app));
     app.waitForService(AgentCommandService, commandService => {
       commandService.addAgentCommands(agentCommands);
     });

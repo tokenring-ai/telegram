@@ -30,7 +30,7 @@ export default {
   alias: "telegram connect",
   description: "Connects a Telegram bot account",
   inputSchema,
-  execute: async ({ agent, positionals: { botToken }, args: { name, save } }: AgentCommandInputType<typeof inputSchema>): Promise<string> => {
+  execute: async ({ agent, args: { botToken, name, save } }: AgentCommandInputType<typeof inputSchema>): Promise<string> => {
     if (!agent.headless && !botToken) {
       botToken =
         (await agent.askForText({
@@ -42,7 +42,7 @@ export default {
 
     if (!botToken) throw new CommandFailedError("Usage: /connect telegram <botToken>");
 
-    const configService = agent.requireServiceByType(ConfigurationService);
+    const configService = agent.requireService(ConfigurationService);
     const overrides = configService.getOverrides(save);
     const telegram = (overrides.telegram ?? {}) as { accounts?: Record<string, unknown> };
     const accounts = telegram.accounts ?? {};
