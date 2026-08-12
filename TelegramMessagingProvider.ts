@@ -115,13 +115,13 @@ export default class TelegramMessagingProvider implements MessagingProvider {
 
   async updateMessage(conversationId: string, messageId: string, text: string): Promise<string> {
     // An edit is addressed by message id alone; the topic is already implied.
-    const options = { chat_id: splitConversation(conversationId).chatId, message_id: Number(messageId) };
+    const options = { text, chat_id: splitConversation(conversationId).chatId, message_id: Number(messageId) };
     try {
-      await this.bot.editMessageText(text, { ...options, parse_mode: "Markdown" });
+      await this.bot.editMessageText({ ...options, parse_mode: "Markdown" });
     } catch (error: unknown) {
       if (isUnchangedError(error)) return messageId;
       if (!isMarkdownParseError(error)) throw error;
-      await this.bot.editMessageText(text, options);
+      await this.bot.editMessageText(options);
     }
     return messageId;
   }
