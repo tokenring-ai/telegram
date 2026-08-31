@@ -38,18 +38,7 @@ telegram:
       maxPhotoPixels: 1000000
       maxFileSize: 20971520
       maxDocumentSize: 10485760
-```
 
-| Option            | Type     | Default      | Description                                                           |
-|-------------------|----------|--------------|-----------------------------------------------------------------------|
-| `botToken`        | `secret` | required     | Telegram bot token from BotFather                                     |
-| `maxPhotoPixels`  | `number` | `1000000`    | Largest photo, in pixels, fetched from Telegram                       |
-| `maxFileSize`     | `number` | `20971520`   | Largest file, in bytes. Telegram itself serves a bot at most 20MB     |
-| `maxDocumentSize` | `number` | `10485760`   | Largest document, in bytes, fetched from Telegram                     |
-
-Then point a bot at it:
-
-```yaml
 bot:
   bots:
     helper:
@@ -60,6 +49,32 @@ bot:
         ops:
           target: telegram:-1001234567890
 ```
+
+| Field             | Type     | Required | Default    | Description                                                        |
+|-------------------|----------|----------|------------|--------------------------------------------------------------------|
+| `botToken`        | `secret` | yes      | —          | Telegram bot token from BotFather                                  |
+| `maxPhotoPixels`  | `number` | no       | `1000000`  | Largest photo, in pixels, fetched from Telegram                    |
+| `maxFileSize`     | `number` | no       | `20971520` | Largest file, in bytes, fetched from Telegram                      |
+| `maxDocumentSize` | `number` | no       | `10485760` | Largest document, in bytes, fetched from Telegram                  |
+
+Account names are service names. A Telegram account named `telegram` therefore addresses users and groups as
+`telegram:<chatId>`.
+
+`botToken` is a secret reference resolved by `@tokenring-ai/secrets` before an account connects. It can be a literal
+string in the config, `{ source: env, env: <name> }` to read an environment variable, or
+`{ source: vault, category, key }` to read from the credential vault. This package does not read environment variables
+itself — point `botToken` at one with `{ source: env, env: ... }`.
+
+### Schema Metadata
+
+The configuration schema carries these `.meta()` annotations for the config UI:
+
+- `TelegramServiceConfigSchema` — `{ label: "Telegram", description: "Telegram bot accounts" }`
+- `accounts` — `{ label: "Accounts", description: "Telegram bot accounts, keyed by the service name bots address them by" }`
+- `accounts.<name>.botToken` — `secret({ description: "Telegram bot token" })` (marked secret and sensitive)
+- `accounts.<name>.maxPhotoPixels` — `{ advanced: true, description: "Largest photo, in pixels, fetched from Telegram" }`
+- `accounts.<name>.maxFileSize` — `{ advanced: true, description: "Largest file, in bytes, fetched from Telegram. Telegram itself refuses to serve a bot more than 20MB" }`
+- `accounts.<name>.maxDocumentSize` — `{ advanced: true, description: "Largest document, in bytes, fetched from Telegram" }`
 
 ### Joining a group
 
@@ -83,14 +98,24 @@ posted back into the topic that asked. Messages in a forum's General topic belon
 Should you want a bot in one topic and nowhere else, address that topic directly as `telegram:<chatId>:<topicId>`; the
 topic id is the `message_thread_id` Telegram shows in the `t.me/c/<chat>/<topic>` link.
 
-### ENV Variables
-
-This package does not read environment variables directly — point `botToken` at one with
-`{ source: env, env: ... }`.
-
 ## Chat Commands
 
-This package does not define any chat commands. See `@tokenring-ai/bot` for `/message` and `/bots`.
+| Command              | Description                          |
+|----------------------|--------------------------------------|
+| `/connect telegram`  | Connects a Telegram bot account      |
+
+The command is also available as `/telegram connect`.
+
+```text
+/connect telegram <botToken> [--name=telegram] [--save=workspace]
+```
+
+- `<botToken>` is an optional positional. When run interactively without it, the token is requested with a masked
+  prompt.
+- `--name` names the account it is saved under (default `telegram`).
+- `--save` chooses the config layer the account is written to: `global` (user configuration) or `workspace` (workspace
+  configuration), default `workspace`.
+- The token is merged into an existing account, preserving any other fields it already has.
 
 ## Tools
 
@@ -98,7 +123,7 @@ This package does not define any tools.
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License — see LICENSE file for details.
 
 ---
 
@@ -106,19 +131,27 @@ MIT License - see LICENSE file for details.
 
 ### TelegramService
 
-Connects every configured account at startup and registers each one with `BotService` under its account name.
-Disconnects and deregisters them on shutdown.
+Connects every configured account and registers each one with `BotService` under its account name. Disconnects and
+deregisters them on shutdown.
 
-| Method                    | Description                          |
-|---------------------------|--------------------------------------|
-| `getAvailableAccounts()`  | Names of the connected accounts      |
-| `getProvider(name)`       | The provider for an account          |
+| Method                    | Description                                                                                                            |
+|---------------------------|------------------------------------------------------------------------------------------------------------------------|
+| `getAvailableAccounts()`  | Names of the connected accounts                                                                                        |
+| `getProvider(name)`       | The provider for an account                                                                                            |
+| `reconfigure(options)`    | Connects new accounts, stops removed ones, and reconnects accounts whose config changed, registering each with `BotService` |
+| `stop()`                  | Unregisters and stops every connected account                                                                          |
+
+`reconfigure` throws a `ConfigurationError` when accounts are configured but the `@tokenring-ai/bot` plugin is not
+installed — there would be nothing to connect them to.
 
 ### TelegramMessagingProvider
 
 Implements `MessagingProvider` from `@tokenring-ai/bot` for one bot account:
 
 - `maxMessageLength` is 4090, just under Telegram's 4096 limit
+- `start()` creates the Telegram Bot API client with long polling, calls `getMe()` to learn the bot's username and id,
+  and registers the message, membership, and polling-error handlers
+- `stop()` clears all handlers and stops polling
 - `resolveConversation` is the identity function — Telegram chat ids address users and groups alike
 - `sendMessage` posts Markdown, falling back to plain text when Telegram cannot parse the entities, and threads off
   `replyToMessageId` via `reply_parameters` when one is given
@@ -131,6 +164,20 @@ Implements `MessagingProvider` from `@tokenring-ai/bot` for one bot account:
 - `onMembershipChange` reports `my_chat_member` updates as `via: "invite"`, and the first message out of a group the
   process was already in as `via: "observed"` — the latter never triggers an automatic join
 
+### Plugin lifecycle
+
+| Field          | Value                                                            |
+|----------------|------------------------------------------------------------------|
+| `name`         | `@tokenring-ai/telegram`                                         |
+| `displayName`  | `Telegram Integration`                                           |
+| `version`      | `0.2.0`                                                          |
+| `description`  | `Telegram transport for TokenRing bots.`                         |
+| `configSchema` | `z.object({ telegram: TelegramServiceConfigSchema.prefault({ accounts: {} }) })` |
+
+- `install` — registers `TelegramService` and waits for `AgentCommandService` to register the `connect telegram` command.
+- `reconfigure` — resolves every account's `botToken` secret via `requireSecret` and hands the resolved accounts to
+  `TelegramService.reconfigure`, which connects, reconnects, or stops accounts as the configuration changes.
+
 ### Package Structure
 
 ```text
@@ -140,16 +187,33 @@ plugin/telegram/
 ├── TelegramService.ts             # Connects accounts, registers them with BotService
 ├── TelegramMessagingProvider.ts   # The Telegram transport
 ├── fetchTelegramFile.ts           # File download helper
+├── commands.ts                    # Command exports
+├── commands/
+│   └── connect/telegram.ts        # /connect telegram command
 ├── schema.ts                      # Configuration schemas
+├── bun.config.ts                  # Bun test configuration
+├── package.json                   # Package manifest
 └── LICENSE                        # MIT License
 ```
 
 ### Dependencies
 
-| Package                    | Description                       |
-|----------------------------|-----------------------------------|
-| `@tokenring-ai/bot`        | Bot service and provider contract |
-| `@tokenring-ai/agent`      | Attachment types                  |
-| `@tokenring-ai/app`        | Application framework             |
-| `@tokenring-ai/secrets`    | Secret resolution                 |
-| `node-telegram-bot-api`    | Telegram Bot API client           |
+| Package                    | Description                              |
+|----------------------------|------------------------------------------|
+| `@tokenring-ai/bot`        | Bot service and provider contract        |
+| `@tokenring-ai/agent`      | Attachment types, agent commands         |
+| `@tokenring-ai/app`        | Application framework and plugin types   |
+| `@tokenring-ai/utility`    | `KeyedRegistry`, used by `TelegramService` |
+| `@tokenring-ai/secrets`    | Secret resolution                        |
+| `node-telegram-bot-api`    | Telegram Bot API client                  |
+| `zod`                      | Configuration schema validation          |
+
+### Testing
+
+```bash
+bun test
+bun run build
+```
+
+This package does not currently ship any `*.test.ts` files; the test commands are defined for future coverage.
+`bun run build` type-checks the package.

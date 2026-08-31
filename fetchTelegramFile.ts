@@ -1,9 +1,13 @@
 // Extracted utility — e.g., fetchTelegramFile.ts
 import type TelegramBotAPI from "node-telegram-bot-api";
 
+const FETCH_TIMEOUT_MS = 30_000;
+
 export async function fetchTelegramFile(bot: TelegramBotAPI, botToken: string, fileId: string): Promise<Buffer> {
   const file = await bot.getFile(fileId);
-  const response = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`);
+  const response = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(`Failed to fetch Telegram file: ${response.statusText}`);
   }
