@@ -4,11 +4,11 @@
   "version": "0.2.0",
   "dependencies": {
     "@tokenring-ai/app": "workspace:*",
-    "zod": "^4.4.3",
+    "zod": "^4.6.7",
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",
     "@tokenring-ai/bot": "workspace:*",
-    "node-telegram-bot-api": "^1.2.0",
+    "node-telegram-bot-api": "^2.3.0",
     "@tokenring-ai/secrets": "workspace:*"
   },
   "devDependencies": {

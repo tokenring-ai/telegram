@@ -2,8 +2,7 @@ import type { ChatAttachment } from "@tokenring-ai/agent/AgentEvents";
 import { ChatAttachmentSchema } from "@tokenring-ai/agent/AgentEvents";
 import type TokenRingApp from "@tokenring-ai/app";
 import type { IncomingMessage, IncomingMessageHandler, MembershipHandler, MessagingProvider, SendOptions } from "@tokenring-ai/bot";
-import type { ChatMemberUpdated, Message } from "node-telegram-bot-api";
-import TelegramBotAPI from "node-telegram-bot-api";
+import { Bot, type ChatMemberUpdated, type Message } from "node-telegram-bot-api";
 import { fetchTelegramFile } from "./fetchTelegramFile.ts";
 import type { ResolvedTelegramAccountConfig } from "./schema.ts";
 import type TelegramService from "./TelegramService.ts";
@@ -24,7 +23,9 @@ const GROUP_CHAT_TYPES = new Set(["group", "supergroup"]);
 export default class TelegramMessagingProvider implements MessagingProvider {
   readonly maxMessageLength = MAX_MESSAGE_LENGTH;
 
-  private bot!: TelegramBotAPI;
+  private bot!: Bot;
+  /** Resolves when polling ends, including after `stop()`. */
+  private polling: Promise<void> | undefined;
   private botUsername = "";
   private botId: number | undefined;
   private handlers = new Set<IncomingMessageHandler>();
@@ -40,37 +41,55 @@ export default class TelegramMessagingProvider implements MessagingProvider {
   ) {}
 
   async start(): Promise<void> {
-    this.bot = new TelegramBotAPI(this.config.botToken, { polling: true });
+    this.bot = new Bot(this.config.botToken);
+    this.bot.catch(error => {
+      this.app.serviceError(this.service, "Error processing Telegram update:", error);
+    });
 
-    const botInfo = await this.bot.getMe();
+    // `init` calls getMe once and keeps the result on `botInfo`.
+    await this.bot.init();
+    const botInfo = this.bot.botInfo;
+    if (!botInfo) throw new Error(`Telegram account ${this.accountName} did not return bot info`);
     this.botUsername = botInfo.username ?? "";
     this.botId = botInfo.id;
 
     this.app.serviceOutput(this.service, `Telegram account ${this.accountName} connected as @${this.botUsername}`);
 
-    this.bot.on("message", msg => {
+    this.bot.on("message", ctx => {
+      const msg = ctx.message;
+      if (!msg) return;
       void this.handleRawMessage(msg).catch((error: unknown) => {
         this.app.serviceError(this.service, "Error processing Telegram message:", error);
       });
     });
 
-    this.bot.on("my_chat_member", update => {
-      void this.handleMembershipUpdate(update).catch((error: unknown) => {
+    this.bot.on("my_chat_member", ctx => {
+      if (!("my_chat_member" in ctx.update)) return;
+      void this.handleMembershipUpdate(ctx.update.my_chat_member).catch((error: unknown) => {
         this.app.serviceError(this.service, "Error processing Telegram membership update:", error);
       });
     });
 
-    this.bot.on("polling_error", error => {
-      this.app.serviceError(this.service, "Telegram polling error:", error);
-    });
+    this.polling = this.bot
+      .startPolling(undefined, {
+        onError: error => {
+          this.app.serviceError(this.service, "Telegram polling error:", error);
+        },
+      })
+      .catch((error: unknown) => {
+        this.app.serviceError(this.service, "Telegram polling stopped:", error);
+      });
   }
 
   async stop(): Promise<void> {
     this.handlers.clear();
     this.membershipHandlers.clear();
     this.reportedChats.clear();
+    const polling = this.polling;
+    this.polling = undefined;
     try {
-      await this.bot.stopPolling();
+      this.bot.stop();
+      await polling;
     } catch (error: unknown) {
       this.app.serviceError(this.service, "Error stopping Telegram polling:", error);
     }
@@ -105,10 +124,10 @@ export default class TelegramMessagingProvider implements MessagingProvider {
 
     let message: Message;
     try {
-      message = await this.bot.sendMessage(chatId, text, { ...params, parse_mode: "Markdown" });
+      message = await this.bot.api.sendMessage({ chat_id: chatId, text, ...params, parse_mode: "Markdown" });
     } catch (error: unknown) {
       if (!isMarkdownParseError(error)) throw error;
-      message = await this.bot.sendMessage(chatId, text, params);
+      message = await this.bot.api.sendMessage({ chat_id: chatId, text, ...params });
     }
     return String(message.message_id);
   }
@@ -117,11 +136,11 @@ export default class TelegramMessagingProvider implements MessagingProvider {
     // An edit is addressed by message id alone; the topic is already implied.
     const options = { text, chat_id: splitConversation(conversationId).chatId, message_id: Number(messageId) };
     try {
-      await this.bot.editMessageText({ ...options, parse_mode: "Markdown" });
+      await this.bot.api.editMessageText({ ...options, parse_mode: "Markdown" });
     } catch (error: unknown) {
       if (isUnchangedError(error)) return messageId;
       if (!isMarkdownParseError(error)) throw error;
-      await this.bot.editMessageText(options);
+      await this.bot.api.editMessageText(options);
     }
     return messageId;
   }
