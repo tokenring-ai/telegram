@@ -16,6 +16,9 @@ const TELEGRAM_DOWNLOAD_LIMIT = 20_971_520;
 /** Chat types that are a room the bot can be invited into, rather than a 1:1. */
 const GROUP_CHAT_TYPES = new Set(["group", "supergroup"]);
 
+/** Backoff between restarts of a polling loop that died; a run this long resets it. */
+const POLL_RESTART = { initialDelayMs: 1_000, maxDelayMs: 300_000, healthyRunMs: 60_000 };
+
 /**
  * One Telegram bot account, exposed as a messaging transport. It knows how to
  * carry text and files to and from Telegram, and nothing about agents.
@@ -24,8 +27,15 @@ export default class TelegramMessagingProvider implements MessagingProvider {
   readonly maxMessageLength = MAX_MESSAGE_LENGTH;
 
   private bot!: Bot;
-  /** Resolves when polling ends, including after `stop()`. */
+  /** Resolves when the polling loop ends, which is only after `stop()`. */
   private polling: Promise<void> | undefined;
+  private stopped = false;
+  /** Wakes the polling loop from a restart backoff when `stop()` is called. */
+  private wakeFromBackoff: (() => void) | undefined;
+  /** Restart backoff; a field so tests can shorten it. */
+  private pollRestart = POLL_RESTART;
+  /** The error that last stopped polling, cleared once a restarted run stays up. */
+  private lastPollingError: unknown;
   private botUsername = "";
   private botId: number | undefined;
   private handlers = new Set<IncomingMessageHandler>();
@@ -70,29 +80,75 @@ export default class TelegramMessagingProvider implements MessagingProvider {
       });
     });
 
-    this.polling = this.bot
-      .startPolling(undefined, {
-        onError: error => {
-          this.app.serviceError(this.service, "Telegram polling error:", error);
-        },
-      })
-      .catch((error: unknown) => {
-        this.app.serviceError(this.service, "Telegram polling stopped:", error);
+    this.stopped = false;
+    this.polling = this.runPolling();
+  }
+
+  /** False while polling is down and waiting to restart. */
+  get healthy(): boolean {
+    return this.lastPollingError === undefined;
+  }
+
+  /**
+   * Keeps the long poll running until `stop()`. The library retries transient failures itself,
+   * but gives up — rejecting — on a fatal one, or on a run of 409s while another process polls
+   * the same token. A dead poller would leave the account registered and silently deaf, so it is
+   * reported as a service error and restarted with exponential backoff.
+   */
+  private async runPolling(): Promise<void> {
+    let delayMs = this.pollRestart.initialDelayMs;
+    while (!this.stopped) {
+      const startedAt = Date.now();
+      try {
+        await this.bot.startPolling(undefined, {
+          onError: error => {
+            this.app.serviceError(this.service, "Telegram polling error:", error);
+          },
+        });
+        if (this.isStopped()) return;
+        this.lastPollingError = new Error("Telegram polling ended unexpectedly");
+      } catch (error: unknown) {
+        if (this.isStopped()) return;
+        this.lastPollingError = error;
+      }
+
+      if (Date.now() - startedAt >= this.pollRestart.healthyRunMs) delayMs = this.pollRestart.initialDelayMs;
+      this.app.serviceError(
+        this.service,
+        `Telegram polling for account ${this.accountName} stopped; restarting in ${Math.round(delayMs / 1000)}s:`,
+        this.lastPollingError,
+      );
+      await new Promise<void>(resolve => {
+        const timer = setTimeout(resolve, delayMs);
+        this.wakeFromBackoff = () => {
+          clearTimeout(timer);
+          resolve();
+        };
       });
+      this.wakeFromBackoff = undefined;
+      delayMs = Math.min(delayMs * 2, this.pollRestart.maxDelayMs);
+    }
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
     this.handlers.clear();
     this.membershipHandlers.clear();
     this.reportedChats.clear();
     const polling = this.polling;
     this.polling = undefined;
+    this.wakeFromBackoff?.();
     try {
       this.bot.stop();
       await polling;
     } catch (error: unknown) {
       this.app.serviceError(this.service, "Error stopping Telegram polling:", error);
     }
+  }
+
+  /** Read through a call: `stop()` flips the flag while a poll is suspended in an await, which narrowing cannot see. */
+  private isStopped(): boolean {
+    return this.stopped;
   }
 
   onMessage(handler: IncomingMessageHandler): void {
@@ -165,6 +221,8 @@ export default class TelegramMessagingProvider implements MessagingProvider {
     if (addressing.addressedToAnotherBot) return;
 
     const repliedTo = msg.reply_to_message?.from?.id === this.botId;
+    // A message arriving proves the poll is up again.
+    this.lastPollingError = undefined;
     const hasAttachments = Boolean(msg.photo?.length) || Boolean(msg.document);
 
     const message: IncomingMessage = {
@@ -176,6 +234,8 @@ export default class TelegramMessagingProvider implements MessagingProvider {
       text: addressing.text,
       messageId: String(msg.message_id),
       replyToMessageId: msg.reply_to_message ? String(msg.reply_to_message.message_id) : undefined,
+      // The answer quotes this message, so it's visibly tied to the question (not to what it replied to).
+      replyTarget: String(msg.message_id),
       hasAttachments,
       attachments: hasAttachments ? this.deferAttachments(msg) : undefined,
       direct,

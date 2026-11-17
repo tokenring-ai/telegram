@@ -111,11 +111,13 @@ The command is also available as `/telegram connect`.
 ```
 
 - `<botToken>` is an optional positional. When run interactively without it, the token is requested with a masked
-  prompt.
+  prompt. Typed inline, the token stays in the chat history.
+- The token is saved in the vault (category `telegram`, key `<name>.botToken`) and the account's `botToken` is set to a
+  `{ source: vault, ... }` reference to it; the vault must be unlocked.
 - `--name` names the account it is saved under (default `telegram`).
 - `--save` chooses the config layer the account is written to: `global` (user configuration) or `workspace` (workspace
   configuration), default `workspace`.
-- The token is merged into an existing account, preserving any other fields it already has.
+- The reference is merged into an existing account, preserving any other fields it already has.
 
 ## Tools
 
